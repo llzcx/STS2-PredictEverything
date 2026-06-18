@@ -546,7 +546,11 @@ public partial class InfoPanel : Control
 
         var (feasible, sequence, error) = _predictor.ComputePlan();
 
-        if (!feasible && error != null)
+        if (string.IsNullOrEmpty(sequence))
+        {
+            _planLabel.Text = "";
+        }
+        else if (!feasible && error != null)
         {
             _planLabel.Text = $"[color=#FF6B35]{error}[/color]";
         }
@@ -558,7 +562,7 @@ public partial class InfoPanel : Control
         {
             int stepCount = 1;
             for (int i = 0; i < sequence.Length; i++)
-                if (sequence[i] == '→') stepCount++; // count arrow separators
+                if (sequence[i] == '→') stepCount++;
             _planLabel.Text = $"[b]{I18n.Tr("plan_prefix")}[/b]: {stepCount} {I18n.Tr("plan_clicks")} | {sequence}";
         }
     }

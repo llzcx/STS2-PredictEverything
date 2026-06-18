@@ -244,6 +244,8 @@ public class CrystalSpherePredictor
                            cost: x.state.RngCost, resolved: x.state.IsLocked))
             .ToList();
 
+        if (pending.Count == 0) return (true, "", null); // nothing planned yet
+
         var unresolved = pending.Where(x => !x.resolved)
             .OrderBy(x => x.offset).ToList();
 
