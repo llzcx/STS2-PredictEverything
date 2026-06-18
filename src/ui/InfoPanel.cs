@@ -421,6 +421,10 @@ public partial class InfoPanel : Control
             relicLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             relicLabel.MouseFilter = MouseFilterEnum.Pass;
 
+            // Hover relic → show relic tooltip
+            var capturedRelic = relic;
+            relicLabel.MouseEntered += () => HoverTooltip.ShowRelic(capturedRelic);
+            relicLabel.MouseExited += () => HoverTooltip.Hide();
             inner.AddChild(relicLabel);
         }
         else
@@ -439,6 +443,10 @@ public partial class InfoPanel : Control
                 cardLabel.ClipContents = true;
                 cardLabel.MouseFilter = MouseFilterEnum.Pass;
 
+                // Hover card → show card tooltip near mouse
+                var capturedCard = card;
+                cardLabel.MouseEntered += () => HoverTooltip.ShowCard(capturedCard);
+                cardLabel.MouseExited += () => HoverTooltip.Hide();
                 inner.AddChild(cardLabel);
             }
         }

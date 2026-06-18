@@ -1,152 +1,180 @@
+using System;
 using System.Linq;
+using System.Reflection;
 using Godot;
+using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.Relics;
+using MegaCrit.Sts2.Core.Localization;
 
 namespace PredictEverything;
 
 /// <summary>
-/// Fixed preview panel below the InfoPanel. Shows card names/costs/descriptions
-/// or relic icon+flavor. Uses only simple Godot controls — no game rendering nodes
-/// that require combat/run context.
+/// Mouse-following tooltip for card/relic preview on hover.
 /// </summary>
 public static class HoverTooltip
 {
     private static PanelContainer? _panel;
-    private static HBoxContainer? _content;
     private static Control? _parent;
-    private static InfoPanel? _infoPanel;
 
-    public static void Init(Control screen, InfoPanel infoPanel)
+    private static readonly FieldInfo? _autoSizeField = typeof(MegaRichTextLabel)
+        .GetField("_isAutoSizeEnabled", BindingFlags.NonPublic | BindingFlags.Instance);
+
+    private static readonly Color CardBg = new(0.08f, 0.09f, 0.16f, 0.98f);
+    private static readonly Color GoldBorder = new(0.722f, 0.588f, 0.290f, 0.6f);
+    private static readonly Color Green = new(0.4f, 1f, 0.4f);
+    private const int PanelWidth = 420;
+
+    public static void Init(Control screen) { _parent = screen; }
+
+    public static void ShowCard(CardPrediction prediction)
     {
-        _parent = screen;
-        _infoPanel = infoPanel;
-        BuildPanel();
-    }
+        if (_parent == null || prediction.Card == null) return;
+        var card = prediction.Card;
 
-    private static void BuildPanel()
-    {
-        _panel = new PanelContainer();
-        _panel.Visible = false;
-        _panel.ZIndex = 190;
-        _panel.MouseFilter = Control.MouseFilterEnum.Ignore;
+        var vbox = new VBoxContainer();
+        vbox.AddThemeConstantOverride("separation", 5);
 
-        var bg = new StyleBoxFlat();
-        bg.BgColor = new Color(0.04f, 0.05f, 0.10f, 0.94f);
-        bg.SetCornerRadiusAll(8);
-        bg.BorderWidthLeft = 1;
-        bg.BorderWidthRight = 1;
-        bg.BorderWidthTop = 1;
-        bg.BorderWidthBottom = 1;
-        bg.BorderColor = new Color(0.722f, 0.588f, 0.290f, 0.4f);
-        bg.ContentMarginLeft = 12;
-        bg.ContentMarginRight = 12;
-        bg.ContentMarginTop = 8;
-        bg.ContentMarginBottom = 8;
-        _panel.AddThemeStyleboxOverride("panel", bg);
+        // Header: cost orb + name
+        var header = new HBoxContainer();
+        header.AddThemeConstantOverride("separation", 8);
 
-        _content = new HBoxContainer();
-        _content.AddThemeConstantOverride("separation", 8);
-        _panel.AddChild(_content);
+        var costBox = new Label();
+        costBox.Text = card.EnergyCost?.Canonical.ToString() ?? "?";
+        costBox.AddThemeColorOverride("font_color", Colors.White);
+        costBox.AddThemeFontSizeOverride("font_size", 20);
+        costBox.HorizontalAlignment = HorizontalAlignment.Center;
+        costBox.CustomMinimumSize = new Vector2(28, 28);
+        var orb = new StyleBoxFlat { BgColor = new Color(0.1f, 0.12f, 0.2f, 1f) };
+        orb.SetCornerRadiusAll(14);
+        costBox.AddThemeStyleboxOverride("normal", orb);
+        header.AddChild(costBox);
 
-        _parent!.AddChild(_panel);
-    }
+        var name = prediction.Name ?? "?";
+        if (prediction.Upgraded && !name.EndsWith("+")) name += "+";
+        var nameLabel = new Label();
+        nameLabel.Text = name;
+        nameLabel.AddThemeColorOverride("font_color", prediction.Upgraded ? Green : new Color(0.91f, 0.86f, 0.75f));
+        nameLabel.AddThemeFontSizeOverride("font_size", 15);
+        header.AddChild(nameLabel);
+        vbox.AddChild(header);
 
-    public static void ShowCards(CardPrediction[] cards)
-    {
-        ClearContent();
-        if (_panel == null || _content == null || _infoPanel == null || cards == null) return;
+        // Type + upgrade
+        var typeText = card.Type.ToString();
+        if (prediction.Upgraded) typeText += "  ⬆";
+        var typeLabel = new Label();
+        typeLabel.Text = typeText;
+        typeLabel.AddThemeColorOverride("font_color", prediction.Upgraded ? Green : new Color(0.65f, 0.65f, 0.65f));
+        typeLabel.AddThemeFontSizeOverride("font_size", 11);
+        vbox.AddChild(typeLabel);
 
-        foreach (var card in cards.Where(c => c.Card != null))
+        // Description — scrollable if long
+        try
         {
-            var label = new RichTextLabel();
-            label.BbcodeEnabled = true;
-            var name = card.Name ?? "?";
-            if (card.Upgraded && !name.EndsWith("+")) name += "+";
-            var color = card.Upgraded ? "#66FF66" : "#C8D0E0";
-            label.Text = $"[b][color={color}]{name}[/color][/b]";
-            label.FitContent = true;
-            label.ScrollActive = false;
-            label.AddThemeFontSizeOverride("normal_font_size", 14);
-            _content.AddChild(label);
+            var mutable = card.ToMutable();
+            if (prediction.Upgraded && mutable.IsUpgradable)
+                MegaCrit.Sts2.Core.Commands.CardCmd.Upgrade(mutable, MegaCrit.Sts2.Core.Nodes.CommonUi.CardPreviewStyle.None);
+            var descText = mutable.GetDescriptionForUpgradePreview();
+            if (!string.IsNullOrEmpty(descText) && descText.Length > 2)
+            {
+                var descLabel = MakeMegaLabel(descText, 12);
+                vbox.AddChild(descLabel);
+            }
         }
+        catch { }
 
-        _panel.CustomMinimumSize = new Vector2(350, 0);
-        PositionAndShow();
+        Attach(BuildCard(vbox));
+    }
+
+    private static MegaRichTextLabel MakeMegaLabel(string text, int fontSize)
+    {
+        var label = new MegaRichTextLabel();
+        label.BbcodeEnabled = true;
+        label.Text = text;
+        label.FitContent = true;
+        label.ScrollActive = false;
+        label.AddThemeFontSizeOverride("normal_font_size", fontSize);
+        label.AddThemeFontSizeOverride("bold_font_size", fontSize);
+        label.AddThemeFontSizeOverride("mono_font_size", fontSize);
+        // Disable auto-size so font stays fixed
+        if (_autoSizeField != null)
+            _autoSizeField.SetValue(label, false);
+        return label;
     }
 
     public static void ShowRelic(RelicPrediction? prediction)
     {
-        ClearContent();
-        if (_panel == null || _content == null || _infoPanel == null || prediction?.Relic == null) return;
+        if (_parent == null || prediction?.Relic == null) return;
 
-        _content.AddChild(BuildRelicSlot(prediction));
-        _panel.CustomMinimumSize = new Vector2(280, 0);
-        PositionAndShow();
+        var vbox = new VBoxContainer();
+        vbox.AddThemeConstantOverride("separation", 5);
+
+        var nameLabel = new Label();
+        nameLabel.Text = $"{prediction.Name}";
+        nameLabel.AddThemeColorOverride("font_color", new Color(0.91f, 0.86f, 0.75f));
+        nameLabel.AddThemeFontSizeOverride("font_size", 15);
+        vbox.AddChild(nameLabel);
+
+        var rarityLabel = new Label();
+        rarityLabel.Text = prediction.RarityLabel;
+        rarityLabel.AddThemeColorOverride("font_color", new Color(0.722f, 0.588f, 0.290f));
+        rarityLabel.AddThemeFontSizeOverride("font_size", 11);
+        vbox.AddChild(rarityLabel);
+
+        var flavor = prediction.Relic.Flavor;
+        var flavorText = flavor.GetFormattedText();
+        if (!string.IsNullOrEmpty(flavorText) && flavorText.Length > 2)
+        {
+            var descLabel = MakeMegaLabel(flavorText, 12);
+            vbox.AddChild(descLabel);
+        }
+
+        Attach(BuildCard(vbox));
     }
 
     public static void Hide()
     {
-        if (_panel != null) _panel.Visible = false;
+        _panel?.QueueFree();
+        _panel = null;
     }
 
-    // ---- Relic slot ----
-
-    private static Control BuildRelicSlot(RelicPrediction prediction)
+    private static PanelContainer BuildCard(Control content)
     {
-        var vbox = new VBoxContainer();
-        vbox.AddThemeConstantOverride("separation", 6);
-
-        // Icon
-        var iconRect = new TextureRect();
-        iconRect.Texture = prediction.Icon ?? prediction.Relic.BigIcon;
-        iconRect.ExpandMode = TextureRect.ExpandModeEnum.KeepSize;
-        iconRect.StretchMode = TextureRect.StretchModeEnum.KeepCentered;
-        iconRect.CustomMinimumSize = new Vector2(80, 80);
-        iconRect.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
-        vbox.AddChild(iconRect);
-
-        // Name
-        var nameLabel = new RichTextLabel();
-        nameLabel.BbcodeEnabled = true;
-        nameLabel.Text = $"[b]{prediction.Name}[/b] ([color=#B8902F]{prediction.RarityLabel}[/color])";
-        nameLabel.FitContent = true;
-        nameLabel.ScrollActive = false;
-        nameLabel.AddThemeFontSizeOverride("normal_font_size", 15);
-        vbox.AddChild(nameLabel);
-
-        // Flavor
-        var flavor = prediction.Relic.Flavor;
-        var flavorText = flavor.GetFormattedText();
-        if (!string.IsNullOrEmpty(flavorText))
-        {
-            var desc = new RichTextLabel();
-            desc.BbcodeEnabled = true;
-            desc.Text = flavorText;
-            desc.FitContent = true;
-            desc.ScrollActive = false;
-            desc.CustomMinimumSize = new Vector2(240, 0);
-            desc.AddThemeFontSizeOverride("normal_font_size", 12);
-            vbox.AddChild(desc);
-        }
-
-        return vbox;
+        var panel = new PanelContainer();
+        panel.CustomMinimumSize = new Vector2(PanelWidth, 0);
+        var bg = new StyleBoxFlat();
+        bg.BgColor = CardBg;
+        bg.SetCornerRadiusAll(8);
+        bg.BorderWidthLeft = 2;
+        bg.BorderWidthRight = 2;
+        bg.BorderWidthTop = 2;
+        bg.BorderWidthBottom = 2;
+        bg.BorderColor = GoldBorder;
+        bg.ContentMarginLeft = 12;
+        bg.ContentMarginRight = 12;
+        bg.ContentMarginTop = 10;
+        bg.ContentMarginBottom = 10;
+        panel.AddThemeStyleboxOverride("panel", bg);
+        panel.AddChild(content);
+        return panel;
     }
 
-    // ----
-
-    private static void ClearContent()
+    private static void Attach(PanelContainer panel)
     {
-        if (_content == null) return;
-        while (_content.GetChildCount() > 0)
-            _content.GetChild(0).QueueFree();
+        Hide();
+        _panel = panel;
+        panel.ZIndex = 200;
+        panel.MouseFilter = Control.MouseFilterEnum.Ignore;
+        Position(panel);
+        _parent!.AddChild(panel);
     }
 
-    private static void PositionAndShow()
+    private static void Position(Control popup)
     {
-        if (_panel == null || _infoPanel == null) return;
-        var infoPos = _infoPanel.GlobalPosition;
-        var infoSize = _infoPanel.Size;
-        _panel.Position = new Vector2(infoPos.X, infoPos.Y + infoSize.Y + 6);
-        _panel.Visible = true;
+        if (_parent == null) return;
+        var mouse = _parent.GetGlobalMousePosition();
+        var vs = _parent.GetViewportRect().Size;
+        popup.Position = new Vector2(
+            Mathf.Min(mouse.X + 18, vs.X - PanelWidth - 30),
+            Mathf.Min(mouse.Y + 6, vs.Y - 300));
     }
 }

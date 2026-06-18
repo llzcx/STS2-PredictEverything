@@ -308,8 +308,8 @@ public static class PredictEverythingPatches
 
         if (PredictEverythingConfig.Instance.EnablePredictionPanel)
         {
-            var infoPanel = InfoPanel.Create(__instance);
-            HoverTooltip.Init(__instance, infoPanel);
+            InfoPanel.Create(__instance);
+            HoverTooltip.Init(__instance);
         }
         if (PredictEverythingConfig.Instance.EnableHoverPopup)
             HoverPopup.Create(__instance);
