@@ -321,12 +321,14 @@ public static class PredictEverythingPatches
     {
         if (CrystalSpherePredictor.Instance?.IsActive != true) return;
 
-        if (PredictEverythingConfig.Instance.EnablePredictionPanel)
+        var cfg = PredictEverythingConfig.Instance;
+
+        if (cfg.EnablePredictionPanel)
         {
             InfoPanel.Create(__instance);
             HoverTooltip.Init(__instance);
         }
-        if (PredictEverythingConfig.Instance.EnableHoverPopup)
+        if (cfg.EnableHoverPopup)
             HoverPopup.Create(__instance);
         if (PredictEverythingConfig.Instance.EnableLockedDashboard)
             LockedDashboard.Create(__instance);

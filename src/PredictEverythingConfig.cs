@@ -12,7 +12,7 @@ public class PredictEverythingConfig
 
     public bool EnableTransparentMask { get; set; } = true;
     public bool EnablePredictionPanel { get; set; } = true;
-    public bool EnableHoverPopup { get; set; } = false;
+    public bool EnableHoverPopup { get; set; } = true;
     public bool EnableLockedDashboard { get; set; } = true;
     public bool VerboseLogging { get; set; } = false;
     public float PanelX { get; set; } = -1;

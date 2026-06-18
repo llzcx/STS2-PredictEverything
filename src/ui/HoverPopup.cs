@@ -13,11 +13,10 @@ using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
 namespace PredictEverything;
 
 /// <summary>
-/// Floating popup shown near the mouse cursor when hovering a CrystalSphere
-/// grid cell. Predicts what clicking that cell would reveal, taking into
-/// account tool type (Big vs Small), adjacent-cell coverage, item overlap,
-/// and the current RNG offset.
-/// Follows the mouse with lerp damping for smooth movement.
+/// Mouse-following popup shown when hovering a CrystalSphere grid cell.
+/// Predicts what clicking that cell would reveal, taking into account
+/// tool type (Big 3x3 vs Small 1x1), item occupancy, and RNG offset order
+/// (gold before cards/relics).
 /// </summary>
 public partial class HoverPopup : Control
 {
@@ -30,8 +29,7 @@ public partial class HoverPopup : Control
     private Label _titleLabel = null!;
     private VBoxContainer _itemsContainer = null!;
 
-    // Mouse tracking
-    private Vector2 _targetPos;
+    // Hover state
     private bool _shouldShow;
     private int _hoverX = -1;
     private int _hoverY = -1;
@@ -60,10 +58,7 @@ public partial class HoverPopup : Control
     private static readonly FieldInfo? _potionField = typeof(CrystalSpherePotion)
         .GetField("_potion", BindingFlags.NonPublic | BindingFlags.Instance);
 
-    // Mouse-follow config
-    private static readonly Vector2 FollowOffset = new(16, 16);
-    private const float Damping = 0.15f;
-    private const float MinPopupW = 200f;
+    private const float MinPopupW = 260f;
 
     // ============= Public API =============
 
@@ -82,7 +77,6 @@ public partial class HoverPopup : Control
         var predictor = CrystalSpherePredictor.Instance!;
         popup._predictor = predictor;
 
-        // Access private fields on the screen
         var entityField = typeof(NCrystalSphereScreen).GetField("_entity",
             BindingFlags.NonPublic | BindingFlags.Instance);
         popup._minigame = (CrystalSphereMinigame)entityField!.GetValue(screen)!;
@@ -116,9 +110,9 @@ public partial class HoverPopup : Control
         ProcessMode = ProcessModeEnum.Always;
         SetProcess(true);
         Visible = false;
-        ZIndex = 100; // render above game elements
+        ZIndex = 100;
 
-        // No anchors — manual position + sizing
+        // Manual position — set in UpdateContent
         AnchorLeft = 0; AnchorTop = 0; AnchorRight = 0; AnchorBottom = 0;
 
         // Background panel
@@ -164,20 +158,12 @@ public partial class HoverPopup : Control
 
     private void OnCellEnter(NCrystalSphereCell cell)
     {
-        // Never show popup for already-revealed cells or finished minigame
-        if (!cell.Entity.IsHidden || _minigame.IsFinished) return;
-
+        if (_minigame.IsFinished) return;
+        if (!cell.Entity.IsHidden) return;
         _hoverX = cell.Entity.X;
         _hoverY = cell.Entity.Y;
         _shouldShow = true;
-
-        // Snap to mouse on first frame so lerp starts from a nearby position
-        _targetPos = GetGlobalMousePosition() + FollowOffset;
-        if (!Visible)
-        {
-            Visible = true;
-            GlobalPosition = _targetPos;
-        }
+        UpdateContent();
     }
 
     private void OnCellExit()
@@ -195,12 +181,6 @@ public partial class HoverPopup : Control
             if (Visible) Visible = false;
             return;
         }
-
-        // Follow mouse with lerp damping
-        _targetPos = GetGlobalMousePosition() + FollowOffset;
-        GlobalPosition = GlobalPosition.Lerp(_targetPos, Damping);
-
-        // Refresh content when state changes
         UpdateContent();
     }
 
@@ -214,7 +194,6 @@ public partial class HoverPopup : Control
         int currentOffset = _predictor.CurrentOffset;
         var tool = _minigame.CrystalSphereTool;
 
-        // Avoid rebuilding every frame when nothing changed
         if (_hoverX == _cachedHoverX
             && _hoverY == _cachedHoverY
             && tool == _cachedTool
@@ -225,7 +204,6 @@ public partial class HoverPopup : Control
         _cachedTool = tool;
         _cachedOffset = currentOffset;
 
-        // Clear previous items
         while (_itemsContainer.GetChildCount() > 0)
         {
             var child = _itemsContainer.GetChild(0);
@@ -246,15 +224,13 @@ public partial class HoverPopup : Control
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", 6);
 
-            // Type tag
-            var typeLabel = CreateLabel(entry.TypeLabel, 10, entry.TypeColor);
-            typeLabel.CustomMinimumSize = new Vector2(48, 0);
+            var typeLabel = CreateLabel(entry.TypeLabel, 11, entry.TypeColor);
+            typeLabel.CustomMinimumSize = new Vector2(52, 0);
             row.AddChild(typeLabel);
 
-            // Item name / value
             if (!string.IsNullOrEmpty(entry.Content))
             {
-                var nameLabel = CreateLabel(entry.Content, 10, StarWhite);
+                var nameLabel = CreateLabel(entry.Content, 11, StarWhite);
                 nameLabel.AutowrapMode = TextServer.AutowrapMode.Word;
                 nameLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
                 row.AddChild(nameLabel);
@@ -263,11 +239,20 @@ public partial class HoverPopup : Control
             _itemsContainer.AddChild(row);
         }
 
-        // Size popup to content
-        float h = 36f + _itemsContainer.GetChildCount() * 22f;
+        // Size to content
+        float h = 34f + _itemsContainer.GetChildCount() * 22f;
         OffsetRight = MinPopupW;
-        OffsetBottom = Mathf.Max(h, 56f);
+        OffsetBottom = h;
         CustomMinimumSize = new Vector2(MinPopupW, h);
+
+        if (!Visible) Visible = true;
+
+        // Position at mouse + offset, clamp to viewport (same pattern as HoverTooltip)
+        var mouse = GetGlobalMousePosition();
+        var vs = GetViewportRect().Size;
+        Position = new Vector2(
+            Mathf.Min(mouse.X + 18, vs.X - MinPopupW - 30),
+            Mathf.Min(mouse.Y + 12, vs.Y - OffsetBottom - 30));
     }
 
     // ============= Click preview algorithm =============
@@ -295,11 +280,9 @@ public partial class HoverPopup : Control
         }
 
         // 2. Determine which items will be revealed, in reveal order
-        //    A multi-cell item is revealed when its LAST occupied cell is cleared.
         var clearedThisClick = new HashSet<(int, int)>();
         var processedItems = new HashSet<CrystalSphereItem>();
         var orderedItems = new List<CrystalSphereItem>();
-
         foreach (var (cx, cy) in clearOrder)
         {
             var cell = _minigame.cells[cx, cy];
@@ -316,9 +299,24 @@ public partial class HoverPopup : Control
 
         if (orderedItems.Count == 0) return entries;
 
-        // 3. Build preview entries, tracking RNG offset advancement
-        int goldCost = 0;
+        // 3. Sort: golds first (legend: "gold always reveals before card/relic"),
+        //    then cards/relics/potions. RNG consumption order must match.
+        orderedItems.Sort((a, b) =>
+        {
+            int Rank(CrystalSphereItem x) => x switch
+            {
+                CrystalSphereGold => 0,
+                CrystalSphereCardReward => 1,
+                CrystalSphereRelic => 1,
+                CrystalSpherePotion => 2,
+                CrystalSphereCurse => 2,
+                _ => 3,
+            };
+            return Rank(a).CompareTo(Rank(b));
+        });
 
+        // 4. Build preview entries, tracking RNG offset advancement
+        int goldCost = 0;
 
         foreach (var item in orderedItems)
         {
@@ -407,7 +405,7 @@ public partial class HoverPopup : Control
                         Content = string.Join(", ", cardNames),
                         TypeColor = colColor,
                     });
-                    goldCost += 6; // card column consumes 6 RNG slots
+                    goldCost += 6;
                     break;
                 }
 
