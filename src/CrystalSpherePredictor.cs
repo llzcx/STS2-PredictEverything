@@ -465,6 +465,13 @@ public class CrystalSpherePredictor
         return _potionNames[index];
     }
 
+    /// <summary>Get the Nth potion model for hover tooltip.</summary>
+    public PotionModel? GetPotionModel(int index)
+    {
+        if (_potionItems == null || index < 0 || index >= _potionItems.Length) return null;
+        return MakePotionPrediction(_potionItems[index]).Potion;
+    }
+
     /// <summary>
     /// Count how many potion items of a given rarity exist.
     /// </summary>

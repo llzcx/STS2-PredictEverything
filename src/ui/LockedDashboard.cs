@@ -157,6 +157,14 @@ public partial class LockedDashboard : Control
             _potionLabels[i] = CreateLabel("", 13, StarWhite);
             _potionLabels[i].SizeFlagsHorizontal = SizeFlags.ExpandFill;
             _potionLabels[i].ClipContents = false;
+            _potionLabels[i].MouseFilter = MouseFilterEnum.Pass;
+            int capturedIndex = i;
+            _potionLabels[i].MouseEntered += () =>
+            {
+                var pm = _predictor.GetPotionModel(capturedIndex);
+                HoverTooltip.ShowPotion(pm);
+            };
+            _potionLabels[i].MouseExited += () => HoverTooltip.Hide();
             _potionContainer.AddChild(_potionLabels[i]);
         }
         _content.AddChild(_potionContainer);

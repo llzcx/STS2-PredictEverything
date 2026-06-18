@@ -6,6 +6,7 @@ using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Models;
 
 namespace PredictEverything;
 
@@ -134,6 +135,36 @@ public static class HoverTooltip
         {
             var descLabel = MakeMegaLabel(flavorText, 12);
             vbox.AddChild(descLabel);
+        }
+
+        Attach(BuildCard(vbox));
+    }
+
+    public static void ShowPotion(PotionModel? potion)
+    {
+        if (_parent == null || potion == null) return;
+
+        var vbox = new VBoxContainer();
+        vbox.AddThemeConstantOverride("separation", 5);
+
+        // Name
+        var name = potion.Title.GetFormattedText();
+        var nameLabel = new Label();
+        nameLabel.Text = name ?? "?";
+        nameLabel.AddThemeColorOverride("font_color", new Color(0.91f, 0.86f, 0.75f));
+        nameLabel.AddThemeFontSizeOverride("font_size", 15);
+        vbox.AddChild(nameLabel);
+
+        // Description
+        var desc = potion.DynamicDescription;
+        if (desc != null)
+        {
+            var descText = desc.GetFormattedText();
+            if (!string.IsNullOrEmpty(descText) && descText.Length > 2)
+            {
+                var descLabel = MakeMegaLabel(descText, 12);
+                vbox.AddChild(descLabel);
+            }
         }
 
         Attach(BuildCard(vbox));
