@@ -1,0 +1,12 @@
+# build artifacts
+bin/
+obj/
+logs/
+*.uid
+
+# IDE
+.vs/
+.idea/
+
+# deploy output
+*.zip

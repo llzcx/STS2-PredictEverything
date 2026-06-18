@@ -1,0 +1,11 @@
+{
+  "id": "predict_everything",
+  "name": "Predict Everything",
+  "author": "Shiang Chen",
+  "description": "CrystalSphere event full prediction. See all possible rewards before clicking, plan your optimal path. Pure information tool — does not modify game mechanics.",
+  "version": "1.0.0",
+  "has_pck": false,
+  "has_dll": true,
+  "dependencies": [],
+  "affects_gameplay": false
+}
