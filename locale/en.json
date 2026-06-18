@@ -23,7 +23,7 @@
     "tutorial_body": "This mod shows you all possible rewards before you click.\n\n[b]Left panel:[/b] See predicted rewards for each RNG offset. Click a row to set your target.\n\n[b]Hover:[/b] Hover over any tile to preview what clicking it reveals.\n\n[b]Right panel:[/b] Track your locked-in rewards.\n\nThis is a pure information tool — it does not modify game mechanics.",
     "tutorial_got_it": "Got it",
     "error_gold_limit": "Need {0} gold but only 7 available",
-    "error_conflict": "Conflict: target offset {0} is already occupied",
+    "error_conflict": "Conflict: offset {0} is reserved by {1} plan",
     "error_passed": "Current offset is {0}, cannot reach {1}",
     "gold_small_label": "+10",
     "gold_big_label": "+30",

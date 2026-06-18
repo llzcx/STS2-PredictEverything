@@ -30,7 +30,13 @@ public partial class InfoPanel : Control
     private static readonly Color PlannedColor = new(1f, 0.84f, 0f, 0.7f);
     private static readonly Color PlannedBorder = new(1f, 0.7f, 0f, 0.9f);
     private static readonly Color LockedColor = new(0f, 0.8f, 0f, 0.45f);
-    private static readonly Color DisabledColor = new(0.35f, 0.35f, 0.35f, 0.6f);
+    private static readonly Color DisabledColor = new(0.25f, 0.18f, 0.18f, 0.55f);
+    // Per-column reserved colors (matching column themes)
+    private static readonly Color RareReservedColor = new(0.45f, 0.15f, 0.08f, 0.5f);
+    private static readonly Color UncommonReservedColor = new(0.10f, 0.25f, 0.45f, 0.5f);
+    private static readonly Color CommonReservedColor = new(0.20f, 0.20f, 0.25f, 0.55f);
+    private static readonly Color RelicReservedColor = new(0.10f, 0.38f, 0.18f, 0.5f);
+    private static readonly Color MixedReservedColor = new(0.35f, 0.28f, 0.20f, 0.5f);
     private static readonly Color CurrentHighlightColor = new(1f, 1f, 1f, 0.2f);
 
     // Panel palette (matches RoutePlanner aesthetic)
@@ -274,23 +280,23 @@ public partial class InfoPanel : Control
             rowHbox.AddThemeConstantOverride("separation", 2);
             rowHbox.MouseFilter = MouseFilterEnum.Pass;
 
-            // Determine row background color (planned rows are NOT highlighted at row level — only the clicked cell glows)
+            // Determine row background color
             Color rowColor;
             if (IsRowLocked(row))
             {
                 rowColor = LockedColor;
             }
-            else if (row == currentOffset)
-            {
-                rowColor = CurrentHighlightColor;
-            }
             else if (row < currentOffset)
             {
                 rowColor = DisabledColor;
             }
+            else if (row == currentOffset)
+            {
+                rowColor = CurrentHighlightColor;
+            }
             else
             {
-                rowColor = new Color(0, 0, 0, 0); // transparent
+                rowColor = GetRowReservedColor(row) ?? new Color(0, 0, 0, 0);
             }
 
             // Offset number label
@@ -353,26 +359,40 @@ public partial class InfoPanel : Control
     private Control BuildCell(int row, ColumnType col, OffsetPrediction pred)
     {
         var inner = new VBoxContainer();
-        inner.MouseFilter = MouseFilterEnum.Stop;
+        inner.MouseFilter = MouseFilterEnum.Pass;
         inner.AddThemeConstantOverride("separation", 0);
         inner.SizeFlagsHorizontal = SizeFlags.ExpandFill;
 
-        // Highlight only this specific cell if it's the planned target
-        bool isPlannedCell = _predictor.IsColumnPlannedAt(col, row);
+        // Cell-level highlight: locked cell→green (always show); planned cell→gold (only for unlocked cols)
+        bool colLocked = _predictor.IsColumnLocked(col);
+        bool isLockedCell = IsColumnLockedAt(col, row);
+        bool isPlannedCell = !colLocked && _predictor.IsColumnPlannedAt(col, row);
         Control cell;
-        if (isPlannedCell)
+        if (isLockedCell || isPlannedCell)
         {
             var wrapper = new PanelContainer();
             wrapper.MouseFilter = MouseFilterEnum.Stop;
             wrapper.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            var cellBg = new StyleBoxFlat { BgColor = CellPlannedBg };
+            Color bgColor, borderColor;
+            if (isLockedCell)
+            {
+                bgColor = LockedColor;
+                borderColor = new Color(0f, 0.7f, 0f, 0.6f);
+            }
+            else
+            {
+                bgColor = CellPlannedBg;
+                borderColor = new Color(1f, 0.6f, 0f, 0.8f);
+            }
+            var cellBg = new StyleBoxFlat { BgColor = bgColor };
             cellBg.SetCornerRadiusAll(4);
             cellBg.BorderWidthLeft = 2;
             cellBg.BorderWidthRight = 2;
             cellBg.BorderWidthTop = 2;
             cellBg.BorderWidthBottom = 2;
-            cellBg.BorderColor = new Color(1f, 0.6f, 0f, 0.8f);
+            cellBg.BorderColor = borderColor;
             wrapper.AddThemeStyleboxOverride("panel", cellBg);
+            inner.MouseFilter = MouseFilterEnum.Ignore; // let click pass to wrapper
             wrapper.AddChild(inner);
             cell = wrapper;
         }
@@ -420,6 +440,8 @@ public partial class InfoPanel : Control
             if (e is InputEventMouseButton mb &&
                 mb.ButtonIndex == MouseButton.Left && mb.Pressed)
             {
+                if (_predictor.IsColumnLocked(capturedCol)) return;
+                if (capturedRow < _predictor.CurrentOffset) return;
                 _predictor.TogglePlan(capturedCol, capturedRow);
                 Refresh();  // Rebuild rows to update colors
             }
@@ -457,6 +479,15 @@ public partial class InfoPanel : Control
 
     // =============== Row state helpers ===============
 
+    private bool IsColumnLockedAt(ColumnType col, int row) => col switch
+    {
+        ColumnType.Rare => _predictor.Rare.LockedAt == row,
+        ColumnType.Uncommon => _predictor.Uncommon.LockedAt == row,
+        ColumnType.Common => _predictor.Common.LockedAt == row,
+        ColumnType.Relic => _predictor.Relic.LockedAt == row,
+        _ => false
+    };
+
     private bool IsRowLocked(int row)
     {
         return _predictor.Rare.LockedAt == row ||
@@ -471,6 +502,31 @@ public partial class InfoPanel : Control
                _predictor.Uncommon.PlannedAt == row ||
                _predictor.Common.PlannedAt == row ||
                _predictor.Relic.PlannedAt == row;
+    }
+
+    private Color? GetRowReservedColor(int row)
+    {
+        // A planned column occupies [PlannedAt, PlannedAt + RngCost) offsets.
+        ColumnType? reservingType = null;
+        var cols = new[] { _predictor.Rare, _predictor.Uncommon, _predictor.Common, _predictor.Relic };
+        foreach (var col in cols)
+        {
+            if (col.HasPlan && row >= col.PlannedAt!.Value && row < col.PlannedAt.Value + col.RngCost)
+            {
+                if (reservingType == null)
+                    reservingType = col.Type;
+                else if (reservingType != col.Type)
+                    return MixedReservedColor;
+            }
+        }
+        return reservingType switch
+        {
+            ColumnType.Rare => RareReservedColor,
+            ColumnType.Uncommon => UncommonReservedColor,
+            ColumnType.Common => CommonReservedColor,
+            ColumnType.Relic => RelicReservedColor,
+            _ => null
+        };
     }
 
     // =============== Drag handling ===============

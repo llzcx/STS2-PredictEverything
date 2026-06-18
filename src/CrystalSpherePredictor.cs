@@ -235,7 +235,10 @@ public class CrystalSpherePredictor
                     x.offset <= targetOffset &&
                     x.col != col).ToList();
                 if (conflicts.Count > 0)
-                    return (false, "", string.Format(I18n.Tr("error_conflict"), targetOffset));
+                {
+                    var conflictCol = conflicts[0].col;
+                    return (false, "", string.Format(I18n.Tr("error_conflict"), targetOffset, GetColumnState(conflictCol).Label));
+                }
                 return (false, "", string.Format(I18n.Tr("error_passed"), cur, targetOffset));
             }
             if (delta > 0)
@@ -256,6 +259,18 @@ public class CrystalSpherePredictor
         Instance = null;
         StateChanged = null;
         PlanChanged = null;
+    }
+
+    public bool IsColumnLocked(ColumnType col)
+    {
+        return col switch
+        {
+            ColumnType.Rare => Rare.IsLocked,
+            ColumnType.Uncommon => Uncommon.IsLocked,
+            ColumnType.Common => Common.IsLocked,
+            ColumnType.Relic => Relic.IsLocked,
+            _ => false
+        };
     }
 
     public bool IsColumnPlannedAt(ColumnType col, int row)
