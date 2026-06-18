@@ -30,6 +30,8 @@ public partial class InfoPanel : Control
     private bool _collapsed;
     private bool _dragging;
     private Vector2 _dragStart;
+    private VBoxContainer _footer = null!;
+    private float _fullHeight;
 
     // Row highlight colors
     private static readonly Color PlannedColor = new(1f, 0.84f, 0f, 0.7f);
@@ -250,8 +252,8 @@ public partial class InfoPanel : Control
 
         // ---- Footer legend ----
         _root.AddChild(new HSeparator());
-        var footer = new VBoxContainer();
-        footer.AddThemeConstantOverride("separation", 2);
+        _footer = new VBoxContainer();
+        _footer.AddThemeConstantOverride("separation", 2);
 
         var legend1 = new RichTextLabel();
         legend1.BbcodeEnabled = true;
@@ -260,7 +262,7 @@ public partial class InfoPanel : Control
         legend1.Text = $"[color=#66FF66][b]✦[/b][/color] = {I18n.Tr("legend_upgraded")}";
         legend1.AddThemeFontSizeOverride("normal_font_size", 11);
         legend1.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
-        footer.AddChild(legend1);
+        _footer.AddChild(legend1);
 
         var legend2 = new RichTextLabel();
         legend2.BbcodeEnabled = true;
@@ -269,7 +271,7 @@ public partial class InfoPanel : Control
         legend2.Text = I18n.Tr("legend_costs");
         legend2.AddThemeFontSizeOverride("normal_font_size", 11);
         legend2.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
-        footer.AddChild(legend2);
+        _footer.AddChild(legend2);
 
         var legend3 = new RichTextLabel();
         legend3.BbcodeEnabled = true;
@@ -278,7 +280,7 @@ public partial class InfoPanel : Control
         legend3.Text = I18n.Tr("legend_order");
         legend3.AddThemeFontSizeOverride("normal_font_size", 11);
         legend3.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
-        footer.AddChild(legend3);
+        _footer.AddChild(legend3);
 
         // Filter algorithm explanation
         var legend4 = new RichTextLabel();
@@ -289,9 +291,9 @@ public partial class InfoPanel : Control
         legend4.AddThemeFontSizeOverride("normal_font_size", 11);
         legend4.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
         _i18nRegistry.Add((legend4, "legend_filter"));
-        footer.AddChild(legend4);
+        _footer.AddChild(legend4);
 
-        _root.AddChild(footer);
+        _root.AddChild(_footer);
 
         // ---- Size and positioning ----
         float w = config.PanelW > 0 ? config.PanelW : 500f;
@@ -320,6 +322,7 @@ public partial class InfoPanel : Control
         }
 
         CustomMinimumSize = new Vector2(w, h);
+        _fullHeight = OffsetBottom - OffsetTop;
 
         // Initial data population
         Refresh();
@@ -815,25 +818,25 @@ public partial class InfoPanel : Control
     {
         _collapsed = !_collapsed;
 
-        // Hide/show content area
-        if (_scroll != null)
-        {
-            _scroll.Visible = !_collapsed;
-        }
-        if (_headerRow != null)
-        {
-            _headerRow.Visible = !_collapsed;
-        }
-        if (_planLabel != null)
-        {
-            _planLabel.Visible = !_collapsed;
-        }
+        if (_collapsed)
+            _fullHeight = Size.Y;
 
-        // Adjust panel height
-        float h = _collapsed ? 38f : (PredictEverythingConfig.Instance.PanelH > 0
-            ? PredictEverythingConfig.Instance.PanelH : 520f);
-        OffsetBottom = OffsetTop + h;
-        CustomMinimumSize = new Vector2(CustomMinimumSize.X, _collapsed ? 0 : 520);
+        if (_scroll != null) _scroll.Visible = !_collapsed;
+        if (_headerRow != null) _headerRow.Visible = !_collapsed;
+        if (_filterRow != null) _filterRow.Visible = !_collapsed;
+        if (_planLabel != null) _planLabel.Visible = !_collapsed;
+        if (_footer != null) _footer.Visible = !_collapsed;
+
+        if (_collapsed)
+        {
+            OffsetBottom = OffsetTop + 38f;
+            CustomMinimumSize = new Vector2(CustomMinimumSize.X, 0);
+        }
+        else
+        {
+            OffsetBottom = OffsetTop + _fullHeight;
+            CustomMinimumSize = new Vector2(CustomMinimumSize.X, _fullHeight);
+        }
     }
 
     // =============== UI Helpers ===============

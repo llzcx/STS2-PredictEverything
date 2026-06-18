@@ -22,6 +22,7 @@ public partial class LockedDashboard : Control
     private Label[] _potionLabels = null!;
     private Label _goldLabel = null!;
     private bool _collapsed;
+    private float _fullHeight;
 
     // Panel palette (matches InfoPanel)
     private static readonly Color DeepSpaceBg = new(0.043f, 0.055f, 0.102f, 0.92f);
@@ -182,6 +183,7 @@ public partial class LockedDashboard : Control
         OffsetTop = 200;
         OffsetBottom = 100 + h;
         CustomMinimumSize = new Vector2(w, h);
+        _fullHeight = OffsetBottom - OffsetTop;
 
         // Initial data population
         Refresh();
@@ -317,6 +319,9 @@ public partial class LockedDashboard : Control
     {
         _collapsed = !_collapsed;
 
+        if (_collapsed)
+            _fullHeight = Size.Y;
+
         if (_content != null)
             _content.Visible = !_collapsed;
 
@@ -327,9 +332,8 @@ public partial class LockedDashboard : Control
         }
         else
         {
-            float h = 260f;
-            OffsetBottom = OffsetTop + h;
-            CustomMinimumSize = new Vector2(CustomMinimumSize.X, h);
+            OffsetBottom = OffsetTop + _fullHeight;
+            CustomMinimumSize = new Vector2(CustomMinimumSize.X, _fullHeight);
         }
     }
 
