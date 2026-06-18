@@ -16,8 +16,8 @@ public partial class TutorialPopup : Control
     private static readonly Color StarWhite = new(0.784f, 0.816f, 0.878f);
     private static readonly Color WarmOrange = new(1f, 0.42f, 0.21f);
 
-    private const float ModalW = 500f;
-    private const float ModalH = 380f;
+    private const float ModalW = 540f;
+    private const float ModalH = 520f;
 
     // =============== Public API ===============
 
@@ -28,10 +28,18 @@ public partial class TutorialPopup : Control
     public static void ShowIfNeeded(Control parent)
     {
         if (PredictEverythingConfig.Instance.TutorialShown) return;
+        Show(parent);
+    }
 
+    /// <summary>
+    /// Always show the tutorial popup, regardless of whether it has been seen.
+    /// Used by the help button for re-reading.
+    /// </summary>
+    public static void Show(Control parent)
+    {
         var popup = new TutorialPopup();
-        popup.Build();
         parent.AddChild(popup);
+        popup.Build();
     }
 
     // =============== Build ===============

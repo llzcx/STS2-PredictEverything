@@ -21,6 +21,8 @@ public partial class LockedDashboard : Control
     private VBoxContainer _potionContainer = null!;
     private Label[] _potionLabels = null!;
     private Label _goldLabel = null!;
+    private Button _collapseBtn = null!;
+    private Label _progressLabel = null!;
     private bool _collapsed;
     private float _fullHeight;
 
@@ -30,6 +32,7 @@ public partial class LockedDashboard : Control
     private static readonly Color StarWhite = new(0.784f, 0.816f, 0.878f);
     private static readonly Color Gold = new(0.722f, 0.588f, 0.290f);
     private static readonly Color IceBlue = new(0.30f, 0.65f, 1f);
+    private static readonly Color LimeGreen = new(0.29f, 0.87f, 0.50f);
 
     // Column dot / accent colors
     private static readonly Color RareColor = new(1f, 0.42f, 0.21f);
@@ -128,11 +131,17 @@ public partial class LockedDashboard : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
         });
 
-        var collapseBtn = CreateIconButton("✕", 14);
+        var collapseBtn = CreateIconButton("▼", 14);
         collapseBtn.Pressed += ToggleCollapse;
+        _collapseBtn = collapseBtn;
         titleBar.AddChild(collapseBtn);
 
         _root.AddChild(titleBar);
+
+        // ---- Progress summary (always visible) ----
+        _progressLabel = CreateLabel("", 12, new Color(0.6f, 0.6f, 0.6f));
+        _progressLabel.AddThemeFontSizeOverride("font_size", 12);
+        _root.AddChild(_progressLabel);
 
         // ---- Collapsible content ----
         _content = new VBoxContainer();
@@ -299,8 +308,19 @@ public partial class LockedDashboard : Control
             }
         }
 
-        // Refresh gold summary
+        // Refresh progress summary
+        int lockedCols = 0;
+        foreach (var (type, _, _) in Columns)
+            if (GetColumnState(type).IsLocked) lockedCols++;
+        int revealedPotions = 0;
+        for (int i = 0; i < _predictor.TotalPotionCount; i++)
+            if (_predictor.IsPotionRevealed(i)) revealedPotions++;
+        _progressLabel.Text = $"{I18n.Tr("progress_columns")}: {lockedCols}/4  |  {I18n.Tr("progress_potions")}: {revealedPotions}/{_predictor.TotalPotionCount}";
+
+        // Refresh gold summary with color coding
         int goldLeft = Math.Max(0, 7 - _predictor.CurrentOffset);
+        Color goldColor = goldLeft > 3 ? LimeGreen : goldLeft > 0 ? new Color(1f, 0.75f, 0.2f) : new Color(1f, 0.28f, 0.28f);
+        _goldLabel.AddThemeColorOverride("font_color", goldColor);
         _goldLabel.Text = $"{I18n.Tr("gold_left")}: {goldLeft}";
     }
 
@@ -319,11 +339,16 @@ public partial class LockedDashboard : Control
     {
         _collapsed = !_collapsed;
 
+        if (_collapseBtn != null)
+            _collapseBtn.Text = _collapsed ? "▲" : "▼";
+
         if (_collapsed)
             _fullHeight = Size.Y;
 
         if (_content != null)
             _content.Visible = !_collapsed;
+        if (_progressLabel != null)
+            _progressLabel.Visible = !_collapsed;
 
         if (_collapsed)
         {

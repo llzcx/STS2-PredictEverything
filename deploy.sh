@@ -4,6 +4,7 @@ GODOT_EXE="D:/dev/mod-dev/godot/Godot_v4.5.1-stable_mono_win64/Godot_v4.5.1-stab
 PROJECT_DIR="D:/project/game/StS2/SlayTheSpire2"
 MOD_DIR="D:/project/game/StS2/SlayTheSpire2/mods/PredictEverything"
 RUNTIME_DIR="D:/dev/mod-dev/godot/Godot_v4.5.1-stable_mono_win64/mods/PredictEverything"
+STEAM_DIR="D:/tools/steam/steamapps/common/Slay the Spire 2/mods/PredictEverything"
 
 # 1. Kill ALL Godot processes and wait for DLL to unlock
 echo "Killing Godot..."
@@ -29,12 +30,20 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# 3. Deploy DLL + locales
+# 3. Deploy DLL + locales to dev runtime
 cp bin/Debug/net9.0/predict_everything.dll "$MOD_DIR/predict_everything.dll"
 cp "$MOD_DIR/predict_everything.dll" "$RUNTIME_DIR/predict_everything.dll"
 cp "$MOD_DIR/locale/zh.json" "$RUNTIME_DIR/locale/zh.json"
 cp "$MOD_DIR/locale/en.json" "$RUNTIME_DIR/locale/en.json"
-echo "Deployed ($(ls -lh "$RUNTIME_DIR/predict_everything.dll" | awk '{print $5}'))"
+echo "Deployed dev ($(ls -lh "$RUNTIME_DIR/predict_everything.dll" | awk '{print $5}'))"
+
+# 3b. Deploy to Steam
+mkdir -p "$STEAM_DIR/locale"
+cp "$MOD_DIR/predict_everything.dll" "$STEAM_DIR/predict_everything.dll"
+cp "$MOD_DIR/manifest.json" "$STEAM_DIR/manifest.json"
+cp "$MOD_DIR/locale/zh.json" "$STEAM_DIR/locale/zh.json"
+cp "$MOD_DIR/locale/en.json" "$STEAM_DIR/locale/en.json"
+echo "Deployed Steam"
 
 # 4. Launch
 echo "Launching..."

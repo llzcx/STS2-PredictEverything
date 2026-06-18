@@ -30,6 +30,9 @@ public partial class InfoPanel : Control
     private bool _collapsed;
     private bool _dragging;
     private Vector2 _dragStart;
+    private Button _collapseBtn = null!;
+    private Button _helpBtn = null!;
+    private Control _screenParent = null!;
     private VBoxContainer _footer = null!;
     private float _fullHeight;
 
@@ -73,6 +76,7 @@ public partial class InfoPanel : Control
     public static InfoPanel Create(Control parent)
     {
         var panel = new InfoPanel();
+        panel._screenParent = parent;
         panel.Build();
         parent.AddChild(panel);
 
@@ -148,15 +152,24 @@ public partial class InfoPanel : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         });
 
+        // Help button
+        _helpBtn = CreateIconButton("?", 16);
+        _helpBtn.Pressed += () =>
+        {
+            try { TutorialPopup.Show(_screenParent); }
+            catch (System.Exception ex) { ModLogger.Error($"Help button failed: {ex}"); }
+        };
+        _titleBar.AddChild(_helpBtn);
+
         // Refresh button
         var refreshBtn = CreateIconButton("↻", 16);
         refreshBtn.Pressed += OnRefreshClicked;
         _titleBar.AddChild(refreshBtn);
 
         // Collapse button
-        var collapseBtn = CreateIconButton("✕", 16);
-        collapseBtn.Pressed += ToggleCollapse;
-        _titleBar.AddChild(collapseBtn);
+        _collapseBtn = CreateIconButton("▼", 16);
+        _collapseBtn.Pressed += ToggleCollapse;
+        _titleBar.AddChild(_collapseBtn);
 
         _titleBar.GuiInput += OnTitleBarGuiInput;
         _root.AddChild(_titleBar);
@@ -213,6 +226,17 @@ public partial class InfoPanel : Control
 
         // Header separator
 
+        // ---- Bottom plan summary (above scroll, always visible) ----
+        _planLabel = new RichTextLabel();
+        _planLabel.BbcodeEnabled = true;
+        _planLabel.FitContent = true;
+        _planLabel.ScrollFollowing = false;
+        _planLabel.ScrollActive = false;
+        _planLabel.MouseFilter = MouseFilterEnum.Pass;
+        _planLabel.AddThemeFontSizeOverride("normal_font_size", 16);
+        _planLabel.AddThemeColorOverride("default_color", StarWhite);
+        _root.AddChild(_planLabel);
+
         // ---- Scrollable rows area ----
         _scroll = new ScrollContainer { Name = "Content" };
         _scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
@@ -236,19 +260,6 @@ public partial class InfoPanel : Control
         _rowsContainer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _scroll.AddChild(_rowsContainer);
         _root.AddChild(_scroll);
-
-        // ---- Bottom plan summary ----
-        _root.AddChild(new HSeparator());
-
-        _planLabel = new RichTextLabel();
-        _planLabel.BbcodeEnabled = true;
-        _planLabel.FitContent = true;
-        _planLabel.ScrollFollowing = false;
-        _planLabel.ScrollActive = false;
-        _planLabel.MouseFilter = MouseFilterEnum.Pass;
-        _planLabel.AddThemeFontSizeOverride("normal_font_size", 16);
-        _planLabel.AddThemeColorOverride("default_color", StarWhite);
-        _root.AddChild(_planLabel);
 
         // ---- Footer legend ----
         _root.AddChild(new HSeparator());
@@ -518,18 +529,41 @@ public partial class InfoPanel : Control
             }
         }
 
-        // Click handler: toggle plan for this column at this row
+        // Click handler: left-click toggle plan, right-click show preview popup
         int capturedRow = row;
         ColumnType capturedCol = col;
         wrapper.GuiInput += (InputEvent e) =>
         {
-            if (e is InputEventMouseButton mb &&
-                mb.ButtonIndex == MouseButton.Left && mb.Pressed)
+            if (e is InputEventMouseButton mb && mb.Pressed)
             {
-                if (_predictor.IsColumnLocked(capturedCol)) return;
-                if (capturedRow < _predictor.CurrentOffset) return;
-                _predictor.TogglePlan(capturedCol, capturedRow);
-                Refresh();
+                if (mb.ButtonIndex == MouseButton.Left)
+                {
+                    if (_predictor.IsColumnLocked(capturedCol)) return;
+                    if (capturedRow < _predictor.CurrentOffset) return;
+                    _predictor.TogglePlan(capturedCol, capturedRow);
+                    Refresh();
+                }
+                else if (mb.ButtonIndex == MouseButton.Right)
+                {
+                    if (col == ColumnType.Relic)
+                    {
+                        var rp = pred.Relic;
+                        if (rp?.Relic != null)
+                            PreviewPopup.ShowRelic(rp.Relic, rp.RarityLabel, rp.Icon, _screenParent);
+                    }
+                    else
+                    {
+                        var cards = pred.GetCards(col);
+                        foreach (var card in cards)
+                        {
+                            if (card.Card != null)
+                            {
+                                PreviewPopup.ShowCard(card.Card, card.Upgraded, _screenParent);
+                                break;
+                            }
+                        }
+                    }
+                }
             }
         };
 
@@ -546,13 +580,13 @@ public partial class InfoPanel : Control
 
         var (feasible, sequence, error) = _predictor.ComputePlan();
 
-        if (string.IsNullOrEmpty(sequence))
-        {
-            _planLabel.Text = "";
-        }
-        else if (!feasible && error != null)
+        if (!feasible && error != null)
         {
             _planLabel.Text = $"[color=#FF6B35]{error}[/color]";
+        }
+        else if (string.IsNullOrEmpty(sequence))
+        {
+            _planLabel.Text = "";
         }
         else if (sequence == I18n.Tr("plan_all_resolved"))
         {
@@ -821,6 +855,9 @@ public partial class InfoPanel : Control
     private void ToggleCollapse()
     {
         _collapsed = !_collapsed;
+
+        if (_collapseBtn != null)
+            _collapseBtn.Text = _collapsed ? "▲" : "▼";
 
         if (_collapsed)
             _fullHeight = Size.Y;
