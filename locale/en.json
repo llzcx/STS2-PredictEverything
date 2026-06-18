@@ -29,6 +29,9 @@
     "gold_big_label": "+30",
     "potion_common": "Common Potion",
     "potion_rare": "Rare Potion",
-    "curse_label": "Curse"
+    "curse_label": "Curse",
+    "legend_upgraded": "Green bold +name = upgraded card",
+    "legend_costs": "Offset costs: Card +6 | Relic +1 | Gold +1 | Potion +0",
+    "legend_order": "Same click: Gold (1x1) always reveals before card/relic"
   }
 }

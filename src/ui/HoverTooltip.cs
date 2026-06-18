@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using Godot;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Localization;
 
@@ -71,16 +72,23 @@ public static class HoverTooltip
         try
         {
             var mutable = card.ToMutable();
+            string? descText;
             if (prediction.Upgraded && mutable.IsUpgradable)
+            {
                 MegaCrit.Sts2.Core.Commands.CardCmd.Upgrade(mutable, MegaCrit.Sts2.Core.Nodes.CommonUi.CardPreviewStyle.None);
-            var descText = mutable.GetDescriptionForUpgradePreview();
+                descText = mutable.GetDescriptionForUpgradePreview();
+            }
+            else
+            {
+                descText = mutable.GetDescriptionForPile(PileType.None);
+            }
             if (!string.IsNullOrEmpty(descText) && descText.Length > 2)
             {
                 var descLabel = MakeMegaLabel(descText, 12);
                 vbox.AddChild(descLabel);
             }
         }
-        catch { }
+        catch (Exception ex) { ModLogger.Info($"HoverCard err: {ex.Message}"); }
 
         Attach(BuildCard(vbox));
     }

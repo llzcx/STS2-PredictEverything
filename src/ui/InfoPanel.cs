@@ -230,6 +230,40 @@ public partial class InfoPanel : Control
         _planLabel.AddThemeColorOverride("default_color", StarWhite);
         _root.AddChild(_planLabel);
 
+        // ---- Footer legend ----
+        _root.AddChild(new HSeparator());
+        var footer = new VBoxContainer();
+        footer.AddThemeConstantOverride("separation", 2);
+
+        var legend1 = new RichTextLabel();
+        legend1.BbcodeEnabled = true;
+        legend1.FitContent = true;
+        legend1.ScrollActive = false;
+        legend1.Text = $"[color=#66FF66][b]✦[/b][/color] = {I18n.Tr("legend_upgraded")}";
+        legend1.AddThemeFontSizeOverride("normal_font_size", 11);
+        legend1.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
+        footer.AddChild(legend1);
+
+        var legend2 = new RichTextLabel();
+        legend2.BbcodeEnabled = true;
+        legend2.FitContent = true;
+        legend2.ScrollActive = false;
+        legend2.Text = I18n.Tr("legend_costs");
+        legend2.AddThemeFontSizeOverride("normal_font_size", 11);
+        legend2.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
+        footer.AddChild(legend2);
+
+        var legend3 = new RichTextLabel();
+        legend3.BbcodeEnabled = true;
+        legend3.FitContent = true;
+        legend3.ScrollActive = false;
+        legend3.Text = I18n.Tr("legend_order");
+        legend3.AddThemeFontSizeOverride("normal_font_size", 11);
+        legend3.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
+        footer.AddChild(legend3);
+
+        _root.AddChild(footer);
+
         // ---- Size and positioning ----
         float w = config.PanelW > 0 ? config.PanelW : 500f;
         float h = config.PanelH > 0 ? config.PanelH : 600f;
@@ -436,12 +470,32 @@ public partial class InfoPanel : Control
                 if (card.Upgraded && !cardName.EndsWith("+"))
                     cardName += "+";
 
-                var cardLabel = CreateLabel(cardName, 14,
-                    card.Upgraded ? LimeGreen : new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.85f));
-                cardLabel.HorizontalAlignment = HorizontalAlignment.Center;
-                cardLabel.AutowrapMode = TextServer.AutowrapMode.Word;
-                cardLabel.ClipContents = true;
-                cardLabel.MouseFilter = MouseFilterEnum.Pass;
+                Control cardLabel;
+                if (card.Upgraded)
+                {
+                    var rtl = new RichTextLabel();
+                    rtl.BbcodeEnabled = true;
+                    rtl.Text = $"[b][color=#66FF66]{cardName}[/color][/b]";
+                    rtl.FitContent = true;
+                    rtl.ScrollActive = false;
+                    rtl.HorizontalAlignment = HorizontalAlignment.Center;
+                    rtl.AutowrapMode = TextServer.AutowrapMode.Word;
+                    rtl.ClipContents = true;
+                    rtl.MouseFilter = MouseFilterEnum.Pass;
+                    rtl.AddThemeFontSizeOverride("normal_font_size", 14);
+                    rtl.AddThemeFontSizeOverride("bold_font_size", 14);
+                    cardLabel = rtl;
+                }
+                else
+                {
+                    var lbl = CreateLabel(cardName, 14,
+                        new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.85f));
+                    lbl.HorizontalAlignment = HorizontalAlignment.Center;
+                    lbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                    lbl.ClipContents = true;
+                    lbl.MouseFilter = MouseFilterEnum.Pass;
+                    cardLabel = lbl;
+                }
 
                 // Hover card → show card tooltip near mouse
                 var capturedCard = card;

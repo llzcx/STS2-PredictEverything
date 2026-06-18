@@ -29,6 +29,9 @@
     "gold_big_label": "+30",
     "potion_common": "普通药水",
     "potion_rare": "稀有药水",
-    "curse_label": "诅咒"
+    "curse_label": "诅咒",
+    "legend_upgraded": "绿色加粗+号 = 已升级卡牌",
+    "legend_costs": "偏移消耗：卡牌+6 | 遗物+1 | 金币+1 | 药水+0",
+    "legend_order": "同次点击：金币（1x1）总是在卡牌/遗物之前揭示"
   }
 }

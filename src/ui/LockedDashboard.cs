@@ -18,7 +18,7 @@ public partial class LockedDashboard : Control
     private VBoxContainer _root = null!;
     private VBoxContainer _rowsContainer = null!;
     private VBoxContainer _content = null!;
-    private Label _potionLabel = null!;
+    private VBoxContainer _potionContainer = null!;
     private Label _goldLabel = null!;
     private bool _collapsed;
 
@@ -147,9 +147,10 @@ public partial class LockedDashboard : Control
         // Separator before potion / gold summary
         _content.AddChild(new HSeparator());
 
-        // Potion row
-        _potionLabel = CreateLabel("", 16, StarWhite);
-        _content.AddChild(_potionLabel);
+        // Potion rows — show each individual potion
+        _potionContainer = new VBoxContainer();
+        _potionContainer.AddThemeConstantOverride("separation", 2);
+        _content.AddChild(_potionContainer);
 
         // Gold row
         _goldLabel = CreateLabel("", 16, Gold);
@@ -212,30 +213,51 @@ public partial class LockedDashboard : Control
             row.AddChild(nameLabel);
 
             // Reward name or "(not yet)" placeholder
-            string rewardText;
-            Color rewardColor;
             if (isLocked)
             {
                 int offset = state.LockedAt;
                 var pred = _predictor.Predictions[offset];
-                rewardText = type switch
+                if (type == ColumnType.Relic)
                 {
-                    ColumnType.Relic => pred.Relic?.Name ?? "?",
-                    _ => string.Join(" / ", pred.GetCards(type).Select(c => c.Upgraded ? c.Name + "+" : c.Name)),
-                };
-                rewardColor = StarWhite;
+                    var lbl = CreateLabel(pred.Relic?.Name ?? "?", 15, StarWhite);
+                    lbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                    lbl.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                    lbl.ClipContents = true;
+                    row.AddChild(lbl);
+                }
+                else
+                {
+                    var cards = pred.GetCards(type);
+                    var parts = cards.Select(c =>
+                    {
+                        string name = c.Name ?? "?";
+                        if (c.Upgraded && !name.EndsWith("+")) name += "+";
+                        return c.Upgraded
+                            ? $"[b][color=#66FF66]{name}[/color][/b]"
+                            : $"[color=#C8D0E0]{name}[/color]";
+                    });
+                    var rtl = new RichTextLabel();
+                    rtl.BbcodeEnabled = true;
+                    rtl.Text = string.Join("  /  ", parts);
+                    rtl.FitContent = true;
+                    rtl.ScrollActive = false;
+                    rtl.AutowrapMode = TextServer.AutowrapMode.Word;
+                    rtl.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                    rtl.ClipContents = true;
+                    rtl.AddThemeFontSizeOverride("normal_font_size", 15);
+                    rtl.AddThemeFontSizeOverride("bold_font_size", 15);
+                    row.AddChild(rtl);
+                }
             }
             else
             {
-                rewardText = I18n.Tr("locked_not_yet");
-                rewardColor = new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.3f);
+                var lbl = CreateLabel(I18n.Tr("locked_not_yet"), 15,
+                    new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.3f));
+                lbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                lbl.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                lbl.ClipContents = true;
+                row.AddChild(lbl);
             }
-
-            var rewardLabel = CreateLabel(rewardText, 15, rewardColor);
-            rewardLabel.AutowrapMode = TextServer.AutowrapMode.Word;
-            rewardLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            rewardLabel.ClipContents = true;
-            row.AddChild(rewardLabel);
 
             _rowsContainer.AddChild(row);
         }
@@ -243,7 +265,22 @@ public partial class LockedDashboard : Control
         // Refresh potion summary
         int revealed = _predictor.RevealedPotionCount;
         int total = _predictor.TotalPotionCount;
-        _potionLabel.Text = $"● {I18n.Tr("locked_potion")}: {revealed} / {total}";
+        // Rebuild potion list
+        while (_potionContainer.GetChildCount() > 0)
+            _potionContainer.GetChild(0).QueueFree();
+        for (int i = 0; i < _predictor.TotalPotionCount; i++)
+        {
+            var potion = _predictor.GetPotionAt(i);
+            if (potion != null)
+            {
+                bool revealed_i = i < revealed;
+                string status = revealed_i ? "●" : "○";
+                string labelText = $"{status} {potion.Title.GetFormattedText()}";
+                var lbl = CreateLabel(labelText, 13,
+                    revealed_i ? StarWhite : new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.35f));
+                _potionContainer.AddChild(lbl);
+            }
+        }
 
         // Refresh gold summary
         int goldLeft = Math.Max(0, 7 - _predictor.CurrentOffset);
