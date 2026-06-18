@@ -497,7 +497,7 @@ public partial class InfoPanel : Control
                     cardLabel = lbl;
                 }
 
-                // Hover card → show card tooltip near mouse
+                // Hover card → show tooltip
                 var capturedCard = card;
                 cardLabel.MouseEntered += () => HoverTooltip.ShowCard(capturedCard);
                 cardLabel.MouseExited += () => HoverTooltip.Hide();

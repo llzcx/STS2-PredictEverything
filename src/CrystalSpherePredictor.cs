@@ -45,6 +45,7 @@ public class CrystalSpherePredictor
     private PotionPrediction _commonPotion = null!;
     private PotionPrediction _rarePotion = null!;
     private CrystalSpherePotion[] _potionItems = null!;
+    private string[] _potionNames = null!;
 
     // Precomputed predictions
     public OffsetPrediction[] Predictions { get; private set; } = null!;
@@ -59,6 +60,7 @@ public class CrystalSpherePredictor
     public ColumnState Relic { get; } = new(ColumnType.Relic);
     public int TotalPotionCount { get; private set; }
     public int RevealedPotionCount { get; private set; }
+    public bool[] PotionRevealed { get; private set; } = null!;
 
     // Events
     public event Action? StateChanged;
@@ -111,6 +113,9 @@ public class CrystalSpherePredictor
             ((PotionModel?)_potionField?.GetValue(p))?.Rarity == PotionRarity.Rare);
         _commonPotion = MakePotionPrediction(commonPotionItem);
         _rarePotion = MakePotionPrediction(rarePotionItem);
+        _potionNames = _potionItems.Select(p => MakePotionPrediction(p).Name).ToArray();
+        PotionRevealed = new bool[TotalPotionCount];
+        ModLogger.Info($"Potion names: [{string.Join(", ", _potionNames)}]");
 
         // Precompute all offset predictions
         Predictions = new OffsetPrediction[MaxOffset + 1];
@@ -165,16 +170,28 @@ public class CrystalSpherePredictor
             ModLogger.Info($"{col} revealed at offset {GetColumnState(col).LockedAt} (cost={rngCost}) → CurrentOffset={CurrentOffset}");
     }
 
-    public void OnPotionRevealed()
+    public void OnPotionRevealed(CrystalSpherePotion item)
     {
-        // Potion does NOT consume RNG (verified: RNG counter stays at 19).
-        // The potion model was already selected in PopulateItems() before baseCounter.
-        // Do NOT advance CurrentOffset.
+        // Find which potion index this is
+        for (int i = 0; i < _potionItems.Length; i++)
+        {
+            if (_potionItems[i] == item)
+            {
+                PotionRevealed[i] = true;
+                break;
+            }
+        }
         RevealedPotionCount++;
         StateChanged?.Invoke();
         PlanChanged?.Invoke();
         if (PredictEverythingConfig.Instance.VerboseLogging)
             ModLogger.Info($"Potion revealed ({RevealedPotionCount}/{TotalPotionCount}) — CurrentOffset stays at {CurrentOffset}");
+    }
+
+    public bool IsPotionRevealed(int index)
+    {
+        if (PotionRevealed == null || index < 0 || index >= PotionRevealed.Length) return false;
+        return PotionRevealed[index];
     }
 
     public void TogglePlan(ColumnType col, int row)
@@ -441,13 +458,11 @@ public class CrystalSpherePredictor
         catch { return new PotionPrediction("?", null); }
     }
 
-    /// <summary>
-    /// Get the Nth potion item (exposed for HoverPopup use).
-    /// </summary>
-    public PotionModel? GetPotionAt(int index)
+    /// <summary>Get the Nth potion's display name (safe — pre-computed at init).</summary>
+    public string? GetPotionName(int index)
     {
-        if (_potionItems == null || index < 0 || index >= _potionItems.Length) return null;
-        return (PotionModel?)_potionField?.GetValue(_potionItems[index]);
+        if (_potionNames == null || index < 0 || index >= _potionNames.Length) return null;
+        return _potionNames[index];
     }
 
     /// <summary>

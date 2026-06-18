@@ -276,7 +276,7 @@ public static class PredictEverythingPatches
         int actualCounter = grid?.Rng.Counter ?? -1;
         ModLogger.Info($"  RNG counter before Potion: {actualCounter}");
         ModLogger.Info($"REVEAL Potion #{pred.RevealedPotionCount + 1}/{pred.TotalPotionCount} at offset {pred.CurrentOffset}");
-        pred.OnPotionRevealed();
+        pred.OnPotionRevealed(__instance);
     }
 
     // ============= Patch 6: Mask transparency =============

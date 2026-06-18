@@ -19,6 +19,7 @@ public partial class LockedDashboard : Control
     private VBoxContainer _rowsContainer = null!;
     private VBoxContainer _content = null!;
     private VBoxContainer _potionContainer = null!;
+    private Label[] _potionLabels = null!;
     private Label _goldLabel = null!;
     private bool _collapsed;
 
@@ -147,9 +148,17 @@ public partial class LockedDashboard : Control
         // Separator before potion / gold summary
         _content.AddChild(new HSeparator());
 
-        // Potion rows — show each individual potion
+        // Potion labels — created once, text updated in Refresh
         _potionContainer = new VBoxContainer();
         _potionContainer.AddThemeConstantOverride("separation", 2);
+        _potionLabels = new Label[3]; // max 3 potions
+        for (int i = 0; i < 3; i++)
+        {
+            _potionLabels[i] = CreateLabel("", 13, StarWhite);
+            _potionLabels[i].SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            _potionLabels[i].ClipContents = false;
+            _potionContainer.AddChild(_potionLabels[i]);
+        }
         _content.AddChild(_potionContainer);
 
         // Gold row
@@ -262,23 +271,21 @@ public partial class LockedDashboard : Control
             _rowsContainer.AddChild(row);
         }
 
-        // Refresh potion summary
-        int revealed = _predictor.RevealedPotionCount;
+        // Refresh potion list — use IsPotionRevealed for accurate per-potion tracking
         int total = _predictor.TotalPotionCount;
-        // Rebuild potion list
-        while (_potionContainer.GetChildCount() > 0)
-            _potionContainer.GetChild(0).QueueFree();
-        for (int i = 0; i < _predictor.TotalPotionCount; i++)
+        for (int i = 0; i < _potionLabels.Length; i++)
         {
-            var potion = _predictor.GetPotionAt(i);
-            if (potion != null)
+            if (i < total)
             {
-                bool revealed_i = i < revealed;
-                string status = revealed_i ? "●" : "○";
-                string labelText = $"{status} {potion.Title.GetFormattedText()}";
-                var lbl = CreateLabel(labelText, 13,
-                    revealed_i ? StarWhite : new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.35f));
-                _potionContainer.AddChild(lbl);
+                var name = _predictor.GetPotionName(i) ?? "?";
+                bool r = _predictor.IsPotionRevealed(i);
+                _potionLabels[i].Text = $"{(r ? "●" : "○")} {name}";
+                _potionLabels[i].Modulate = r ? Colors.White : new Color(1, 1, 1, 0.35f);
+                _potionLabels[i].Visible = true;
+            }
+            else
+            {
+                _potionLabels[i].Visible = false;
             }
         }
 
