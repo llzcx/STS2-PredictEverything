@@ -263,7 +263,7 @@ public class CrystalSpherePredictor
                 goldUsed += delta;
                 if (goldUsed > 7)
                     return (false, "", string.Format(I18n.Tr("error_gold_limit"), goldUsed));
-                steps.Add($"{I18n.Tr("gold_small_label")}×{delta}");
+                steps.Add($"{I18n.Tr("gold_step")}{delta}");
             }
             steps.Add(GetColumnState(col).Label);
             cur = targetOffset + cost;

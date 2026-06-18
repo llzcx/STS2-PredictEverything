@@ -26,6 +26,7 @@
     "error_conflict": "Conflict: offset {0} is reserved by {1} plan",
     "error_passed": "Current offset is {0}, cannot reach {1}",
     "gold_small_label": "+10",
+    "gold_step": "Gold x",
     "gold_big_label": "+30",
     "potion_common": "Common Potion",
     "potion_rare": "Rare Potion",

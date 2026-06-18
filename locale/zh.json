@@ -26,6 +26,7 @@
     "error_conflict": "冲突：偏移 {0} 已被计划{1}占用",
     "error_passed": "当前偏移已在 {0}，无法到达 {1}",
     "gold_small_label": "+10",
+    "gold_step": "金币x",
     "gold_big_label": "+30",
     "potion_common": "普通药水",
     "potion_rare": "稀有药水",
