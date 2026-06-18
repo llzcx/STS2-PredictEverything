@@ -53,6 +53,7 @@ public partial class InfoPanel : Control
 
     // I18n registry for language switching
     private readonly List<(Control control, string key)> _i18nRegistry = new();
+    private readonly Dictionary<ColumnType, RichTextLabel> _headerLabels = new();
 
 
 
@@ -173,12 +174,21 @@ public partial class InfoPanel : Control
                 ColumnType.Relic => "col_relic",
                 _ => ""
             };
-            var headerLabel = CreateLocalizedLabel(key, 16, StarWhite);
+            var headerLabel = new RichTextLabel();
+            headerLabel.BbcodeEnabled = true;
+            headerLabel.FitContent = true;
+            headerLabel.ScrollActive = false;
             headerLabel.HorizontalAlignment = HorizontalAlignment.Center;
             headerLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            headerLabel.AddThemeFontSizeOverride("normal_font_size", 16);
+            headerLabel.AddThemeColorOverride("default_color", StarWhite);
+            headerLabel.MouseFilter = MouseFilterEnum.Pass;
+            _headerLabels[col] = headerLabel;
+            _i18nRegistry.Add((headerLabel, key));
             _headerRow.AddChild(headerLabel);
         }
         _root.AddChild(_headerRow);
+        RefreshHeaders();
 
         // Header separator
         _root.AddChild(new HSeparator());
@@ -261,6 +271,7 @@ public partial class InfoPanel : Control
     {
         if (_rowsContainer == null) return;
         if (_predictor == null || !_predictor.IsActive) return;
+        RefreshHeaders();
 
         // Clear existing rows
         while (_rowsContainer.GetChildCount() > 0)
@@ -585,9 +596,36 @@ public partial class InfoPanel : Control
                 label.Text = I18n.Tr(key);
             else if (control is Button button)
                 button.Text = I18n.Tr(key);
+            else if (control is RichTextLabel rtl)
+                rtl.Text = $"[color=#C8D0E0]{I18n.Tr(key)}[/color]";
         }
+        RefreshHeaders();
         Refresh();
         RefreshPlanLabel();
+    }
+
+    private void RefreshHeaders()
+    {
+        if (_predictor == null || !_predictor.IsActive) return;
+        foreach (var col in Cols)
+        {
+            if (_headerLabels.TryGetValue(col, out var label))
+            {
+                string key = col switch
+                {
+                    ColumnType.Rare => "col_rare",
+                    ColumnType.Uncommon => "col_uncommon",
+                    ColumnType.Common => "col_common",
+                    ColumnType.Relic => "col_relic",
+                    _ => ""
+                };
+                string name = I18n.Tr(key);
+                bool locked = _predictor.IsColumnLocked(col);
+                label.Text = locked
+                    ? $"[color=#33CC66]{name} [/color][color=#66FF66]🔒[/color]"
+                    : $"[color=#C8D0E0]{name}[/color]";
+            }
+        }
     }
 
     // =============== Button handlers ===============
