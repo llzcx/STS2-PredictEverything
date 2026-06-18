@@ -59,9 +59,12 @@ public static class PredictEverythingPatches
         var gridField = typeof(CrystalSphereGold).GetField("_grid", BindingFlags.NonPublic | BindingFlags.Instance);
         var grid = gridField?.GetValue(__instance) as CrystalSphereMinigame;
         int actualCounter = grid?.Rng.Counter ?? -1;
-        string isBig = (bool?)typeof(CrystalSphereGold).GetField("_isBig", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(__instance) == true ? "Big" : "Small";
-        ModLogger.Info($"  RNG counter before Gold: {actualCounter}");
-        ModLogger.Info($"REVEAL Gold ({isBig}) at offset {pred.CurrentOffset}");
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+        {
+            string isBig = (bool?)typeof(CrystalSphereGold).GetField("_isBig", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(__instance) == true ? "Big" : "Small";
+            ModLogger.Info($"  RNG counter before Gold: {actualCounter}");
+            ModLogger.Info($"REVEAL Gold ({isBig}) at offset {pred.CurrentOffset}");
+        }
         pred.OnGoldRevealed();
     }
 
@@ -70,6 +73,7 @@ public static class PredictEverythingPatches
     public static void CrystalSphereGold_RevealItem_Postfix(CrystalSphereGold __instance)
     {
         if (CrystalSpherePredictor.Instance == null) return;
+        if (!PredictEverythingConfig.Instance.VerboseLogging) return;
         var gridField = typeof(CrystalSphereGold).GetField("_grid", BindingFlags.NonPublic | BindingFlags.Instance);
         var grid = gridField?.GetValue(__instance) as CrystalSphereMinigame;
         int actualCounter = grid?.Rng.Counter ?? -1;
@@ -83,6 +87,7 @@ public static class PredictEverythingPatches
     public static void CardReward_Populate_Postfix(CardReward __instance)
     {
         if (CrystalSpherePredictor.Instance == null) return;
+        if (!PredictEverythingConfig.Instance.VerboseLogging) return;
         try
         {
             var cardsProp = typeof(CardReward).GetProperty("Cards");
@@ -124,6 +129,7 @@ public static class PredictEverythingPatches
     public static void AddReward_Postfix(CrystalSphereMinigame __instance)
     {
         if (CrystalSpherePredictor.Instance == null) return;
+        if (!PredictEverythingConfig.Instance.VerboseLogging) return;
         try
         {
             var rewardsField = typeof(CrystalSphereMinigame).GetField("_rewards",
@@ -212,8 +218,11 @@ public static class PredictEverythingPatches
         };
         var pred = CrystalSpherePredictor.Instance;
         var offset = pred.CurrentOffset;
-        var predictedCards = pred.Predictions[offset].GetCards(colType);
-        ModLogger.Info($"REVEAL {colType} at offset {offset} — predicted: [{string.Join(", ", predictedCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}]");
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+        {
+            var predictedCards = pred.Predictions[offset].GetCards(colType);
+            ModLogger.Info($"REVEAL {colType} at offset {offset} — predicted: [{string.Join(", ", predictedCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}]");
+        }
         CrystalSpherePredictor.Instance.OnColumnRevealed(colType, 6);
     }
 
@@ -222,6 +231,7 @@ public static class PredictEverythingPatches
     public static void CrystalSphereCardReward_RevealItem_Postfix(CrystalSphereCardReward __instance)
     {
         if (CrystalSpherePredictor.Instance == null) return;
+        if (!PredictEverythingConfig.Instance.VerboseLogging) return;
         var gridField = typeof(CrystalSphereCardReward).GetField("_grid", BindingFlags.NonPublic | BindingFlags.Instance);
         var grid = gridField?.GetValue(__instance) as CrystalSphereMinigame;
         int actualCounter = grid?.Rng.Counter ?? -1;
@@ -243,7 +253,8 @@ public static class PredictEverythingPatches
         if (!LocalContext.IsMe(owner)) return;
         var pred = CrystalSpherePredictor.Instance;
         var offset = pred.CurrentOffset;
-        ModLogger.Info($"REVEAL Relic at offset {offset} — predicted: [{pred.Predictions[offset].Relic.Name}]");
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+            ModLogger.Info($"REVEAL Relic at offset {offset} — predicted: [{pred.Predictions[offset].Relic.Name}]");
         pred.OnColumnRevealed(ColumnType.Relic, 1);
     }
 
@@ -252,6 +263,7 @@ public static class PredictEverythingPatches
     public static void CrystalSphereRelic_RevealItem_Postfix(CrystalSphereRelic __instance)
     {
         if (CrystalSpherePredictor.Instance == null) return;
+        if (!PredictEverythingConfig.Instance.VerboseLogging) return;
         var gridField = typeof(CrystalSphereRelic).GetField("_grid", BindingFlags.NonPublic | BindingFlags.Instance);
         var grid = gridField?.GetValue(__instance) as CrystalSphereMinigame;
         int actualCounter = grid?.Rng.Counter ?? -1;
@@ -271,11 +283,14 @@ public static class PredictEverythingPatches
         if (CrystalSpherePredictor.Instance == null) return;
         if (!LocalContext.IsMe(owner)) return;
         var pred = CrystalSpherePredictor.Instance;
-        var gridField = typeof(CrystalSpherePotion).GetField("_grid", BindingFlags.NonPublic | BindingFlags.Instance);
-        var grid = gridField?.GetValue(__instance) as CrystalSphereMinigame;
-        int actualCounter = grid?.Rng.Counter ?? -1;
-        ModLogger.Info($"  RNG counter before Potion: {actualCounter}");
-        ModLogger.Info($"REVEAL Potion #{pred.RevealedPotionCount + 1}/{pred.TotalPotionCount} at offset {pred.CurrentOffset}");
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+        {
+            var gridField = typeof(CrystalSpherePotion).GetField("_grid", BindingFlags.NonPublic | BindingFlags.Instance);
+            var grid = gridField?.GetValue(__instance) as CrystalSphereMinigame;
+            int actualCounter = grid?.Rng.Counter ?? -1;
+            ModLogger.Info($"  RNG counter before Potion: {actualCounter}");
+            ModLogger.Info($"REVEAL Potion #{pred.RevealedPotionCount + 1}/{pred.TotalPotionCount} at offset {pred.CurrentOffset}");
+        }
         pred.OnPotionRevealed(__instance);
     }
 

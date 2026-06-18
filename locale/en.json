@@ -33,6 +33,7 @@
     "curse_label": "Curse",
     "legend_upgraded": "Green bold +name = upgraded card",
     "legend_costs": "Offset costs: Card +6 | Relic +1 | Gold +1 | Potion +0",
-    "legend_order": "Same click: Gold (1x1) always reveals before card/relic"
+    "legend_order": "Same click: Gold (1x1) always reveals before card/relic",
+    "legend_filter": "Filter: auto-plans optimal path (fewest golds > earliest finish). Unselected card columns act as stepping stones. Relic is last resort after gold is spent. Max 7 gold."
   }
 }

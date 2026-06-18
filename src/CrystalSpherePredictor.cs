@@ -61,6 +61,14 @@ public class CrystalSpherePredictor
     public int TotalPotionCount { get; private set; }
     public int RevealedPotionCount { get; private set; }
     public bool[] PotionRevealed { get; private set; } = null!;
+    public Dictionary<(string n, bool u), int> RareCardMap { get; private set; } = null!;
+    public Dictionary<(string n, bool u), int> UncommonCardMap { get; private set; } = null!;
+    public Dictionary<(string n, bool u), int> CommonCardMap { get; private set; } = null!;
+    public Dictionary<string, int> RelicMap { get; private set; } = null!;
+    public List<(string n, bool u)> RareCardList { get; private set; } = null!;
+    public List<(string n, bool u)> UncommonCardList { get; private set; } = null!;
+    public List<(string n, bool u)> CommonCardList { get; private set; } = null!;
+    public List<string> RelicList { get; private set; } = null!;
 
     // Events
     public event Action? StateChanged;
@@ -125,21 +133,25 @@ public class CrystalSpherePredictor
         CurrentOffset = 0;
         foreach (var col in new[] { Rare, Uncommon, Common, Relic })
         { col.LockedAt = -1; col.PlannedAt = null; }
+        BuildCardMaps();
 
         ModLogger.Info($"Predictor initialized — seed={_rngSeed}, baseCounter={_rngBaseCounter}, " +
             $"rarePool={_rarePool.Count}, uncommonPool={_uncommonPool.Count}, commonPool={_commonPool.Count}, " +
             $"potions={TotalPotionCount}, hasEggs=[A:{_hasEggAttack},S:{_hasEggSkill},P:{_hasEggPower}]");
 
-        // Dump all predictions
-        for (int i = 0; i <= MaxOffset; i++)
+        // Dump all predictions (verbose only)
+        if (PredictEverythingConfig.Instance.VerboseLogging)
         {
-            var p = Predictions[i];
-            ModLogger.Info($"  Offset {i,2}: " +
-                $"R=[{string.Join("|", p.RareCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}] " +
-                $"U=[{string.Join("|", p.UncommonCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}] " +
-                $"C=[{string.Join("|", p.CommonCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}] " +
-                $"Relic=[{p.Relic.Name}] " +
-                $"Potions=[C:{p.CommonPotion.Name} R:{p.RarePotion.Name}]");
+            for (int i = 0; i <= MaxOffset; i++)
+            {
+                var p = Predictions[i];
+                ModLogger.Info($"  Offset {i,2}: " +
+                    $"R=[{string.Join("|", p.RareCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}] " +
+                    $"U=[{string.Join("|", p.UncommonCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}] " +
+                    $"C=[{string.Join("|", p.CommonCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}] " +
+                    $"Relic=[{p.Relic.Name}] " +
+                    $"Potions=[C:{p.CommonPotion.Name} R:{p.RarePotion.Name}]");
+            }
         }
     }
 
@@ -200,19 +212,22 @@ public class CrystalSpherePredictor
         if (state.PlannedAt == row)
         {
             state.PlannedAt = null;
-            ModLogger.Info($"Plan: UNPLAN {col}[{row}] -> Total plans: " +
-                $"{(Rare.HasPlan ? 1 : 0) + (Uncommon.HasPlan ? 1 : 0) + (Common.HasPlan ? 1 : 0) + (Relic.HasPlan ? 1 : 0)}");
+            if (PredictEverythingConfig.Instance.VerboseLogging)
+                ModLogger.Info($"Plan: UNPLAN {col}[{row}]");
         }
         else
         {
             state.PlannedAt = row;
-            var pred = Predictions[row];
-            string target = col switch
+            if (PredictEverythingConfig.Instance.VerboseLogging)
             {
-                ColumnType.Relic => $"Relic [{pred.Relic.Name}]",
-                _ => $"{col} [{string.Join(",", pred.GetCards(col).Select(c => c.Upgraded ? c.Name + "+" : c.Name))}]"
-            };
-            ModLogger.Info($"Plan: {target} at offset {row}");
+                var pred = Predictions[row];
+                string target = col switch
+                {
+                    ColumnType.Relic => $"Relic [{pred.Relic.Name}]",
+                    _ => $"{col} [{string.Join(",", pred.GetCards(col).Select(c => c.Upgraded ? c.Name + "+" : c.Name))}]"
+                };
+                ModLogger.Info($"Plan: {target} at offset {row}");
+            }
         }
         PlanChanged?.Invoke();
     }
@@ -480,5 +495,143 @@ public class CrystalSpherePredictor
         if (_potionItems == null) return 0;
         return _potionItems.Count(p => ((PotionModel?)_potionField?.GetValue(p))?.Rarity
             == (isRare ? PotionRarity.Rare : PotionRarity.Common));
+    }
+
+    private void BuildCardMaps()
+    {
+        RareCardMap = new(); UncommonCardMap = new(); CommonCardMap = new(); RelicMap = new();
+        for (int off = 0; off <= MaxOffset; off++)
+        {
+            var p = Predictions[off];
+            foreach (var c in p.RareCards.Where(c => c.Card != null))
+            { var k = (c.Name, c.Upgraded); if (!RareCardMap.ContainsKey(k)) RareCardMap[k] = off; }
+            foreach (var c in p.UncommonCards.Where(c => c.Card != null))
+            { var k = (c.Name, c.Upgraded); if (!UncommonCardMap.ContainsKey(k)) UncommonCardMap[k] = off; }
+            foreach (var c in p.CommonCards.Where(c => c.Card != null))
+            { var k = (c.Name, c.Upgraded); if (!CommonCardMap.ContainsKey(k)) CommonCardMap[k] = off; }
+            if (p.Relic.Name != "?" && !RelicMap.ContainsKey(p.Relic.Name)) RelicMap[p.Relic.Name] = off;
+        }
+        RareCardList = RareCardMap.Keys.OrderBy(k => k.u).ThenBy(k => k.n).ToList();
+        UncommonCardList = UncommonCardMap.Keys.OrderBy(k => k.u).ThenBy(k => k.n).ToList();
+        CommonCardList = CommonCardMap.Keys.OrderBy(k => k.u).ThenBy(k => k.n).ToList();
+        RelicList = RelicMap.Keys.OrderBy(n => n).ToList();
+    }
+
+    public (bool f, string s, string? e) ComputeOptimalPath(
+        (string n, bool u)? rt, (string n, bool u)? ut, (string n, bool u)? ct, string? relT)
+    {
+        Rare.PlannedAt = null; Uncommon.PlannedAt = null; Common.PlannedAt = null; Relic.PlannedAt = null;
+        var all = new List<(ColumnType c, System.Func<int, bool> m, int cost, bool req)>();
+        // Add selected targets as required
+        if (rt.HasValue) all.Add((ColumnType.Rare, o => PredAt(o,0).Any(x => x.Name==rt.Value.n && x.Upgraded==rt.Value.u), 6, true));
+        if (ut.HasValue) all.Add((ColumnType.Uncommon, o => PredAt(o,1).Any(x => x.Name==ut.Value.n && x.Upgraded==ut.Value.u), 6, true));
+        if (ct.HasValue) all.Add((ColumnType.Common, o => PredAt(o,2).Any(x => x.Name==ct.Value.n && x.Upgraded==ct.Value.u), 6, true));
+        if (relT != null) all.Add((ColumnType.Relic, o => Predictions[o].Relic.Name == relT, 1, true));
+        // Add unselected unlocked card columns as optional wildcards
+        bool hasTarget = rt.HasValue || ut.HasValue || ct.HasValue || relT != null;
+        if (hasTarget)
+        {
+            if (!rt.HasValue && !Rare.IsLocked) all.Add((ColumnType.Rare, o => true, 6, false));
+            if (!ut.HasValue && !Uncommon.IsLocked) all.Add((ColumnType.Uncommon, o => true, 6, false));
+            if (!ct.HasValue && !Common.IsLocked) all.Add((ColumnType.Common, o => true, 6, false));
+        }
+        if (all.Count == 0) return (true, "", null);
+        // Log
+        foreach (var t in all)
+        {
+            var tag = t.req ? "req" : "opt";
+            var offs = new List<int>();
+            for (int o = 0; o <= MaxOffset; o++) if (t.m(o)) offs.Add(o);
+            ModLogger.Info($"  OptPath {tag} {t.c}(cost={t.Item3}): offsets=[{string.Join(",", offs.Take(30))}]");
+        }
+        // Pass 1: without optional relic (prefer gold over relic)
+        var best = TryPerms(all, 0, new List<(ColumnType, System.Func<int, bool>, int, bool)>());
+        // Pass 2: with optional relic as last resort
+        if (best == null && relT == null && !Relic.IsLocked && hasTarget)
+        {
+            ModLogger.Info("  OptPath pass1 failed, trying with optional Relic as last resort");
+            all.Add((ColumnType.Relic, o => true, 1, false));
+            best = TryPerms(all, 0, new List<(ColumnType, System.Func<int, bool>, int, bool)>());
+        }
+        if (best == null)
+        {
+            ModLogger.Info($"  OptPath result: INFEASIBLE (no path within 7 golds from offset {CurrentOffset})");
+            ClearPlans(); return (false, "", "无可行的路径组合");
+        }
+        foreach (var it in best) GetColumnState(it.Item1).PlannedAt = it.Item2;
+        PlanChanged?.Invoke();
+        var steps = new List<string>(); int pos = CurrentOffset; int totalG = 0;
+        foreach (var it in best)
+        { int d = it.Item2 - pos; totalG += d; if (d > 0) steps.Add(I18n.Tr("gold_step") + d); steps.Add(GetColumnState(it.Item1).Label); pos = it.Item2 + it.Item3; }
+        ModLogger.Info($"  OptPath result: [{string.Join(" -> ", steps)}] gold={totalG} end={pos}");
+        return (true, string.Join(" -> ", steps), null);
+    }
+
+    List<(ColumnType, int, int)>? TryPerms(
+        List<(ColumnType c, System.Func<int, bool> m, int cost, bool req)> all, int mask,
+        List<(ColumnType, System.Func<int, bool>, int, bool)> order)
+    {
+        if (order.Count == all.Count) return Dfs(order, 0, CurrentOffset, 0, new(), null);
+        List<(ColumnType, int, int)>? best = null;
+        for (int i = 0; i < all.Count; i++)
+        {
+            if ((mask & (1<<i)) != 0) continue;
+            order.Add(all[i]);
+            var r = TryPerms(all, mask|(1<<i), order);
+            if (r != null && (best == null || Less(r, best))) best = r;
+            order.RemoveAt(order.Count-1);
+        }
+        return best;
+    }
+
+    static bool Less(List<(ColumnType, int, int)> a, List<(ColumnType, int, int)> b)
+    {
+        // Prefer fewer golds, then earlier end offset
+        int ga = TotalGold(a), gb = TotalGold(b);
+        if (ga != gb) return ga < gb;
+        return a[^1].Item2 + a[^1].Item3 < b[^1].Item2 + b[^1].Item3;
+    }
+
+    static int TotalGold(List<(ColumnType, int, int)> path)
+    {
+        int g = 0, pos = 0;
+        foreach (var it in path) { g += it.Item2 - pos; pos = it.Item2 + it.Item3; }
+        return g;
+    }
+
+    List<(ColumnType, int, int)>? Dfs(
+        List<(ColumnType c, System.Func<int, bool> m, int cost, bool req)> items,
+        int idx, int cur, int goldUsed, List<(ColumnType, int, int)> cl, List<(ColumnType, int, int)>? best)
+    {
+        if (idx >= items.Count)
+        {
+            if (cl.Count == 0) return best;
+            if (goldUsed > 7) return best;
+            if (best == null) return new List<(ColumnType, int, int)>(cl);
+            return Less(cl, best) ? new List<(ColumnType, int, int)>(cl) : best;
+        }
+        var it = items[idx];
+        int maxOff = it.req ? MaxOffset : cur; // optional columns only need off=cur
+        for (int off = cur; off <= maxOff; off++)
+        {
+            if (!it.m(off)) continue;
+            int end = off + it.cost;
+            if (cl.Any(r => r.Item2 < end && r.Item2 + r.Item3 > off)) continue;
+            int stepGold = off - cur;
+            if (goldUsed + stepGold > 7) continue;
+            cl.Add((it.c, off, it.cost));
+            best = Dfs(items, idx + 1, end, goldUsed + stepGold, cl, best);
+            cl.RemoveAt(cl.Count - 1);
+        }
+        return best;
+    }
+
+    CardPrediction[] PredAt(int off, int col) => col switch
+    { 0 => Predictions[off].RareCards, 1 => Predictions[off].UncommonCards, _ => Predictions[off].CommonCards };
+
+    void ClearPlans()
+    {
+        foreach (var c in new[] { Rare, Uncommon, Common, Relic }) c.PlannedAt = null;
+        PlanChanged?.Invoke();
     }
 }

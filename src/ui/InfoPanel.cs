@@ -21,6 +21,11 @@ public partial class InfoPanel : Control
     private RichTextLabel _planLabel = null!;
     private ScrollContainer _scroll = null!;
     private HBoxContainer _headerRow = null!;
+    private HBoxContainer _filterRow = null!;
+    private OptionButton _rareFilter = null!;
+    private OptionButton _uncommonFilter = null!;
+    private OptionButton _commonFilter = null!;
+    private OptionButton _relicFilter = null!;
 
     private bool _collapsed;
     private bool _dragging;
@@ -190,8 +195,21 @@ public partial class InfoPanel : Control
         _root.AddChild(_headerRow);
         RefreshHeaders();
 
+        // ---- Card/Relic filter dropdowns ---- (temporarily disabled)
+        // Card/Relic filter dropdowns
+        _filterRow = new HBoxContainer();
+        _filterRow.AddThemeConstantOverride("separation", 4);
+        _rareFilter = BuildFilter(ColumnType.Rare, "col_rare");
+        _uncommonFilter = BuildFilter(ColumnType.Uncommon, "col_uncommon");
+        _commonFilter = BuildFilter(ColumnType.Common, "col_common");
+        _relicFilter = BuildFilter(ColumnType.Relic, "col_relic");
+        _filterRow.AddChild(_rareFilter);
+        _filterRow.AddChild(_uncommonFilter);
+        _filterRow.AddChild(_commonFilter);
+        _filterRow.AddChild(_relicFilter);
+        _root.AddChild(_filterRow);
+
         // Header separator
-        _root.AddChild(new HSeparator());
 
         // ---- Scrollable rows area ----
         _scroll = new ScrollContainer { Name = "Content" };
@@ -262,11 +280,22 @@ public partial class InfoPanel : Control
         legend3.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
         footer.AddChild(legend3);
 
+        // Filter algorithm explanation
+        var legend4 = new RichTextLabel();
+        legend4.BbcodeEnabled = true;
+        legend4.FitContent = true;
+        legend4.ScrollActive = false;
+        legend4.Text = I18n.Tr("legend_filter");
+        legend4.AddThemeFontSizeOverride("normal_font_size", 11);
+        legend4.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
+        _i18nRegistry.Add((legend4, "legend_filter"));
+        footer.AddChild(legend4);
+
         _root.AddChild(footer);
 
         // ---- Size and positioning ----
         float w = config.PanelW > 0 ? config.PanelW : 500f;
-        float h = config.PanelH > 0 ? config.PanelH : 600f;
+        float h = config.PanelH > 0 ? config.PanelH : 680f;
         float y = config.PanelY > 0 ? config.PanelY : 200f;
 
         if (config.PanelX < 0)
@@ -359,40 +388,29 @@ public partial class InfoPanel : Control
                 rowHbox.AddChild(cell);
             }
 
-            // Apply row background via PanelContainer
-            if (rowColor.A > 0f)
+            // Always wrap row in PanelContainer — border always present (transparent when idle)
+            // to prevent layout shift when row highlight changes
+            var rowWrapper = new PanelContainer();
+            rowWrapper.MouseFilter = MouseFilterEnum.Pass;
+            rowWrapper.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            var wrapperStyle = new StyleBoxFlat
             {
-                var wrapper = new PanelContainer();
-                wrapper.MouseFilter = MouseFilterEnum.Pass;
-                wrapper.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-                var wrapperStyle = new StyleBoxFlat
-                {
-                    BgColor = rowColor,
-                    ContentMarginLeft = 2,
-                    ContentMarginRight = 2,
-                    ContentMarginTop = 1,
-                    ContentMarginBottom = 1
-                };
-                wrapperStyle.SetCornerRadiusAll(3);
-                // Add border for planned rows
-                if (IsRowPlanned(row))
-                {
-                    wrapperStyle.BorderWidthLeft = 2;
-                    wrapperStyle.BorderWidthRight = 2;
-                    wrapperStyle.BorderWidthTop = 2;
-                    wrapperStyle.BorderWidthBottom = 2;
-                    wrapperStyle.BorderColor = PlannedBorder;
-                }
-                wrapper.AddThemeStyleboxOverride("panel", wrapperStyle);
-                rowHbox.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-                wrapper.AddChild(rowHbox);
-                _rowsContainer.AddChild(wrapper);
-            }
-            else
-            {
-                rowHbox.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-                _rowsContainer.AddChild(rowHbox);
-            }
+                BgColor = rowColor,
+                ContentMarginLeft = 2,
+                ContentMarginRight = 2,
+                ContentMarginTop = 1,
+                ContentMarginBottom = 1
+            };
+            wrapperStyle.SetCornerRadiusAll(3);
+            wrapperStyle.BorderWidthLeft = 2;
+            wrapperStyle.BorderWidthRight = 2;
+            wrapperStyle.BorderWidthTop = 2;
+            wrapperStyle.BorderWidthBottom = 2;
+            wrapperStyle.BorderColor = IsRowPlanned(row) ? PlannedBorder : new Color(0, 0, 0, 0);
+            rowWrapper.AddThemeStyleboxOverride("panel", wrapperStyle);
+            rowHbox.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            rowWrapper.AddChild(rowHbox);
+            _rowsContainer.AddChild(rowWrapper);
         }
     }
 
@@ -409,42 +427,34 @@ public partial class InfoPanel : Control
         inner.SizeFlagsHorizontal = SizeFlags.ExpandFill;
 
         // Cell-level highlight: locked cell→green (always show); planned cell→gold (only for unlocked cols)
+        // Always wrap in PanelContainer with 2px border — transparent when idle so layout never shifts
         bool colLocked = _predictor.IsColumnLocked(col);
         bool isLockedCell = IsColumnLockedAt(col, row);
         bool isPlannedCell = !colLocked && _predictor.IsColumnPlannedAt(col, row);
-        Control cell;
-        if (isLockedCell || isPlannedCell)
+
+        var cellBg = new StyleBoxFlat();
+        cellBg.SetCornerRadiusAll(4);
+        cellBg.BorderWidthLeft = 2; cellBg.BorderWidthRight = 2;
+        cellBg.BorderWidthTop = 2; cellBg.BorderWidthBottom = 2;
+        cellBg.BgColor = new Color(0, 0, 0, 0);
+        cellBg.BorderColor = new Color(0, 0, 0, 0);
+        if (isLockedCell)
         {
-            var wrapper = new PanelContainer();
-            wrapper.MouseFilter = MouseFilterEnum.Stop;
-            wrapper.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            Color bgColor, borderColor;
-            if (isLockedCell)
-            {
-                bgColor = LockedColor;
-                borderColor = new Color(0f, 0.7f, 0f, 0.6f);
-            }
-            else
-            {
-                bgColor = CellPlannedBg;
-                borderColor = new Color(1f, 0.6f, 0f, 0.8f);
-            }
-            var cellBg = new StyleBoxFlat { BgColor = bgColor };
-            cellBg.SetCornerRadiusAll(4);
-            cellBg.BorderWidthLeft = 2;
-            cellBg.BorderWidthRight = 2;
-            cellBg.BorderWidthTop = 2;
-            cellBg.BorderWidthBottom = 2;
-            cellBg.BorderColor = borderColor;
-            wrapper.AddThemeStyleboxOverride("panel", cellBg);
-            inner.MouseFilter = MouseFilterEnum.Ignore; // let click pass to wrapper
-            wrapper.AddChild(inner);
-            cell = wrapper;
+            cellBg.BgColor = LockedColor;
+            cellBg.BorderColor = new Color(0f, 0.7f, 0f, 0.6f);
         }
-        else
+        else if (isPlannedCell)
         {
-            cell = inner;
+            cellBg.BgColor = CellPlannedBg;
+            cellBg.BorderColor = new Color(1f, 0.6f, 0f, 0.8f);
         }
+
+        var wrapper = new PanelContainer();
+        wrapper.MouseFilter = isLockedCell || isPlannedCell ? MouseFilterEnum.Stop : MouseFilterEnum.Pass;
+        wrapper.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        wrapper.AddThemeStyleboxOverride("panel", cellBg);
+        inner.MouseFilter = isLockedCell || isPlannedCell ? MouseFilterEnum.Ignore : MouseFilterEnum.Pass;
+        wrapper.AddChild(inner);
 
         if (col == ColumnType.Relic)
         {
@@ -508,7 +518,7 @@ public partial class InfoPanel : Control
         // Click handler: toggle plan for this column at this row
         int capturedRow = row;
         ColumnType capturedCol = col;
-        cell.GuiInput += (InputEvent e) =>
+        wrapper.GuiInput += (InputEvent e) =>
         {
             if (e is InputEventMouseButton mb &&
                 mb.ButtonIndex == MouseButton.Left && mb.Pressed)
@@ -516,11 +526,11 @@ public partial class InfoPanel : Control
                 if (_predictor.IsColumnLocked(capturedCol)) return;
                 if (capturedRow < _predictor.CurrentOffset) return;
                 _predictor.TogglePlan(capturedCol, capturedRow);
-                Refresh();  // Rebuild rows to update colors
+                Refresh();
             }
         };
 
-        return cell;
+        return wrapper;
     }
 
     /// <summary>
@@ -600,6 +610,99 @@ public partial class InfoPanel : Control
             ColumnType.Relic => RelicReservedColor,
             _ => null
         };
+    }
+
+    // =============== Filter dropdowns ===============
+
+    private OptionButton BuildFilter(ColumnType col, string labelKey)
+    {
+        var ob = new OptionButton();
+        ob.AddThemeFontSizeOverride("font_size", 12);
+        ob.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        ob.MouseFilter = MouseFilterEnum.Pass;
+
+        ob.AddItem($"— {I18n.Tr(labelKey)} —", 0);
+
+        var predictor = CrystalSpherePredictor.Instance;
+        if (predictor == null) return ob;
+
+        if (col == ColumnType.Relic && predictor.RelicList != null)
+        {
+            foreach (var name in predictor.RelicList)
+                ob.AddItem(name, ob.ItemCount);
+        }
+        else
+        {
+            var cardList = col switch
+            {
+                ColumnType.Rare => predictor.RareCardList,
+                ColumnType.Uncommon => predictor.UncommonCardList,
+                _ => predictor.CommonCardList
+            };
+            if (cardList != null)
+            {
+                foreach (var (name, upgraded) in cardList)
+                {
+                    string label = upgraded && !name.EndsWith("+") ? name + "+" : name;
+                    ob.AddItem(label, ob.ItemCount);
+                }
+            }
+        }
+        ob.ItemSelected += _ => OnFilterChanged();
+        return ob;
+    }
+
+    private void OnFilterChanged()
+    {
+        if (_predictor == null || !_predictor.IsActive) return;
+
+        (string, bool)? rareT = null, uncT = null, comT = null;
+        string? relT = null;
+
+        ParseCardFilter(_rareFilter, ColumnType.Rare, ref rareT);
+        ParseCardFilter(_uncommonFilter, ColumnType.Uncommon, ref uncT);
+        ParseCardFilter(_commonFilter, ColumnType.Common, ref comT);
+
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+            ModLogger.Info($"Filter: R={rareT} U={uncT} C={comT} Rel={relT}");
+
+        if (_relicFilter?.Selected > 0)
+        {
+            string name = _relicFilter.GetItemText(_relicFilter.Selected);
+            if (CrystalSpherePredictor.Instance!.RelicMap.ContainsKey(name))
+                relT = name;
+        }
+
+        var (feasible, sequence, error) = _predictor.ComputeOptimalPath(rareT, uncT, comT, relT);
+        if (!feasible && error != null)
+        {
+            _predictor.Rare.PlannedAt = null;
+            _predictor.Uncommon.PlannedAt = null;
+            _predictor.Common.PlannedAt = null;
+            _predictor.Relic.PlannedAt = null;
+        }
+        Refresh();
+        RefreshPlanLabel();
+        // Override plan label with optimal path result
+        if (_planLabel != null)
+        {
+            if (!feasible && error != null)
+                _planLabel.Text = $"[color=#FF6B35]{error}[/color]";
+            else if (!string.IsNullOrEmpty(sequence))
+                _planLabel.Text = $"[b]{I18n.Tr("plan_prefix")}[/b]: {sequence}";
+            else if (rareT == null && uncT == null && comT == null && relT == null)
+                _planLabel.Text = "";
+        }
+    }
+
+    private static void ParseCardFilter(OptionButton? ob, ColumnType col, ref (string, bool)? target)
+    {
+        if (ob == null || ob.Selected <= 0) return;
+        string text = ob.GetItemText((int)ob.Selected);
+        if (string.IsNullOrEmpty(text) || text.StartsWith("—")) return;
+        bool upgraded = text.EndsWith("+");
+        string cleanName = upgraded ? text[..^1] : text;
+        target = (cleanName, upgraded);
     }
 
     // =============== Drag handling ===============
@@ -760,11 +863,15 @@ public partial class InfoPanel : Control
         var btn = new Button { Text = text };
         btn.CustomMinimumSize = new Vector2(22, 22);
         btn.AddThemeFontSizeOverride("font_size", fontSize);
-        var flatStyle = new StyleBoxFlat { BgColor = new Color(0, 0, 0, 0) };
-        btn.AddThemeStyleboxOverride("normal", flatStyle);
-        btn.AddThemeStyleboxOverride("hover", flatStyle);
-        btn.AddThemeStyleboxOverride("pressed", flatStyle);
-        btn.AddThemeStyleboxOverride("focus", flatStyle);
+        var normalStyle = new StyleBoxFlat { BgColor = new Color(0, 0, 0, 0) };
+        var hoverStyle = new StyleBoxFlat { BgColor = new Color(1f, 1f, 1f, 0.1f) };
+        hoverStyle.SetCornerRadiusAll(4);
+        var pressedStyle = new StyleBoxFlat { BgColor = new Color(1f, 1f, 1f, 0.2f) };
+        pressedStyle.SetCornerRadiusAll(4);
+        btn.AddThemeStyleboxOverride("normal", normalStyle);
+        btn.AddThemeStyleboxOverride("hover", hoverStyle);
+        btn.AddThemeStyleboxOverride("pressed", pressedStyle);
+        btn.AddThemeStyleboxOverride("focus", normalStyle);
         return btn;
     }
 
