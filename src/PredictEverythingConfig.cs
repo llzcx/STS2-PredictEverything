@@ -14,7 +14,7 @@ public class PredictEverythingConfig
     public bool EnablePredictionPanel { get; set; } = true;
     public bool EnableHoverPopup { get; set; } = true;
     public bool EnableLockedDashboard { get; set; } = true;
-    public bool VerboseLogging { get; set; } = false;
+    public bool VerboseLogging { get; set; } = true;
     public float PanelX { get; set; } = -1;
     public float PanelY { get; set; } = -1;
     public float PanelW { get; set; } = -1;

@@ -15,22 +15,27 @@ using MegaCrit.Sts2.Core.Rewards;
 
 namespace PredictEverything;
 
-/// <summary>
-/// Harmony patches that wire the CrystalSpherePredictor into the game's
-/// CrystalSphere event flow. Patches cover: minigame init, gold reveal,
-/// card column reveal, relic reveal, potion reveal, and mask transparency.
-/// </summary>
 public static class PredictEverythingPatches
 {
+    private static int _eventCounter;
+    private static int _divinationClick;
+    private static int _divinationTotal;
+    private static readonly List<string> _revealLog = new();
+    private static int _goldsRevealed;
+    private static int _potionsRevealed;
+    private static int _cardsRevealed;
+    private static int _relicsRevealed;
+    private static int _cursesRevealed;
+
     private static readonly FieldInfo? _rarityField = typeof(CrystalSphereCardReward)
         .GetField("_rarity", BindingFlags.NonPublic | BindingFlags.Instance);
+    private static readonly FieldInfo? _isBigField = typeof(CrystalSphereGold)
+        .GetField("_isBig", BindingFlags.NonPublic | BindingFlags.Instance);
+    private static readonly FieldInfo? _rngOverrideField = typeof(Reward)
+        .GetField("_rngOverride", BindingFlags.NonPublic | BindingFlags.Instance);
 
-    // ============= Patch 1: Minigame constructor =============
+    // ============= Patch 1: Minigame constructor — event header =============
 
-    /// <summary>
-    /// After CrystalSphereMinigame is constructed for the local player,
-    /// initialize the predictor with the minigame's RNG state.
-    /// </summary>
     [HarmonyPatch(typeof(CrystalSphereMinigame), MethodType.Constructor,
         [typeof(Player), typeof(Rng), typeof(int)])]
     [HarmonyPostfix]
@@ -39,282 +44,393 @@ public static class PredictEverythingPatches
     {
         if (!LocalContext.IsMe(owner)) return;
 
-        // Clean up any previous predictor instance before creating a new one
-        CrystalSpherePredictor.Instance?.Reset();
+        _eventCounter++;
+        _divinationClick = 0;
+        _divinationTotal = __instance.DivinationCount;
+        _revealLog.Clear();
+        _goldsRevealed = 0;
+        _potionsRevealed = 0;
+        _cardsRevealed = 0;
+        _relicsRevealed = 0;
+        _cursesRevealed = 0;
 
+        CrystalSpherePredictor.Instance?.Reset();
         var predictor = new CrystalSpherePredictor();
         predictor.Initialize(rng, owner, __instance);
-    }
 
-    // ============= Patch 2: Gold reveal =============
+        ModLogger.Info("");
+        ModLogger.Info($"╔══════════════════════════════════════════════════════════════╗");
+        ModLogger.Info($"║         CRYSTAL SPHERE EVENT #{_eventCounter}                               ║");
+        ModLogger.Info($"╠══════════════════════════════════════════════════════════════╣");
+        ModLogger.Info($"║ Seed: {rng.Seed,-10}  Initial Counter: {rng.Counter,-5}                       ║");
+        ModLogger.Info($"║ Items on grid (15 total):                                   ║");
 
-    [HarmonyPatch(typeof(CrystalSphereGold), nameof(CrystalSphereGold.RevealItem))]
-    [HarmonyPrefix]
-    public static void CrystalSphereGold_RevealItem_Prefix(CrystalSphereGold __instance, Player owner)
-    {
-        if (CrystalSpherePredictor.Instance == null) return;
-        if (!LocalContext.IsMe(owner)) return;
-        var pred = CrystalSpherePredictor.Instance;
-        // Read actual RNG counter from the grid to compare
-        var gridField = typeof(CrystalSphereGold).GetField("_grid", BindingFlags.NonPublic | BindingFlags.Instance);
-        var grid = gridField?.GetValue(__instance) as CrystalSphereMinigame;
-        int actualCounter = grid?.Rng.Counter ?? -1;
+        var items = __instance.Items;
+        int relicCount = items.OfType<CrystalSphereRelic>().Count();
+        int potionCount = items.OfType<CrystalSpherePotion>().Count();
+        int cardCount = items.OfType<CrystalSphereCardReward>().Count();
+        int curseCount = items.OfType<CrystalSphereCurse>().Count();
+        int goldCount = items.OfType<CrystalSphereGold>().Count();
+
+        ModLogger.Info($"║   Relic(4x4)×{relicCount}  Potion×{potionCount}  Card×{cardCount}  Curse×{curseCount}  Gold×{goldCount}              ║");
+        ModLogger.Info($"║ Divinations: 6                                              ║");
+        ModLogger.Info($"╚══════════════════════════════════════════════════════════════╝");
+        ModLogger.Info("");
+
         if (PredictEverythingConfig.Instance.VerboseLogging)
         {
-            string isBig = (bool?)typeof(CrystalSphereGold).GetField("_isBig", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(__instance) == true ? "Big" : "Small";
-            ModLogger.Info($"  RNG counter before Gold: {actualCounter}");
-            ModLogger.Info($"REVEAL Gold ({isBig}) at offset {pred.CurrentOffset}");
+            ModLogger.Info("--- Item Grid Layout ---");
+            foreach (var item in items)
+                ModLogger.Info($"  {item.GetType().Name,-22} pos=({item.Position.X,2},{item.Position.Y,2}) size=({item.Size.X},{item.Size.Y})");
+            ModLogger.Info("--- Prediction Table (all offsets) ---");
+            for (int i = 0; i <= 26; i++)
+            {
+                var p = predictor.Predictions[i];
+                ModLogger.Info($"  Offset {i,2}: " +
+                    $"R=[{string.Join("|", p.RareCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}] " +
+                    $"U=[{string.Join("|", p.UncommonCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}] " +
+                    $"C=[{string.Join("|", p.CommonCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}] " +
+                    $"Relic=[{p.Relic.Name}]");
+            }
+            ModLogger.Info("");
         }
-        pred.OnGoldRevealed();
     }
 
-    [HarmonyPatch(typeof(CrystalSphereGold), nameof(CrystalSphereGold.RevealItem))]
-    [HarmonyPostfix]
-    public static void CrystalSphereGold_RevealItem_Postfix(CrystalSphereGold __instance)
+    // ============= Patch 2: CellClicked — track actual divination count =============
+
+    [HarmonyPatch(typeof(CrystalSphereMinigame), nameof(CrystalSphereMinigame.CellClicked))]
+    [HarmonyPrefix]
+    public static void CellClicked_Prefix()
+    {
+        _divinationClick++;
+        ModLogger.Info($"┌─ Click {_divinationClick}/{_divinationTotal} ────────────────────────────────────┐");
+    }
+
+    // ============= Patch 3: Item Revealed =============
+
+    [HarmonyPatch(typeof(CrystalSphereItem), nameof(CrystalSphereItem.RevealItem))]
+    [HarmonyPrefix]
+    public static void RevealItem_Prefix(CrystalSphereItem __instance, Player _)
     {
         if (CrystalSpherePredictor.Instance == null) return;
-        if (!PredictEverythingConfig.Instance.VerboseLogging) return;
-        var gridField = typeof(CrystalSphereGold).GetField("_grid", BindingFlags.NonPublic | BindingFlags.Instance);
-        var grid = gridField?.GetValue(__instance) as CrystalSphereMinigame;
-        int actualCounter = grid?.Rng.Counter ?? -1;
-        ModLogger.Info($"  RNG counter after Gold: {actualCounter}");
+        var pred = CrystalSpherePredictor.Instance;
+
+        string itemDesc;
+        string rngImpact = "";
+        bool predictable = true;
+
+        switch (__instance)
+        {
+            case CrystalSphereGold gold:
+            {
+                bool isBig = (bool?)_isBigField?.GetValue(gold) == true;
+                itemDesc = $"Gold ({(isBig ? "Big 30g" : "Small 10g")}) at ({gold.Position.X},{gold.Position.Y}) size=({gold.Size.X}x{gold.Size.Y})";
+                rngImpact = "ToReward: 0 RNG (creates GoldReward with fixed amount)\n" +
+                           "│  Populate: +1 RNG (NextInt — deterministic, always returns fixed amount)";
+                predictable = true;
+                _goldsRevealed++;
+                pred.OnGoldRevealed();
+                break;
+            }
+            case CrystalSphereCardReward card:
+            {
+                var rarity = (CardRarity?)_rarityField?.GetValue(card) ?? CardRarity.Common;
+                var colType = rarity switch
+                {
+                    CardRarity.Rare => ColumnType.Rare,
+                    CardRarity.Uncommon => ColumnType.Uncommon,
+                    _ => ColumnType.Common
+                };
+                itemDesc = $"{colType} Card at ({card.Position.X},{card.Position.Y}) size=({card.Size.X}x{card.Size.Y})";
+                rngImpact = "ToReward: 0 RNG (stores RNG in CardCreationOptions)\n" +
+                           "│  Populate: +6 RNG (3×NextItem + 3×NextFloat)";
+                predictable = true;
+
+                int offset = pred.CardPredictionOffset;
+                var predictedCards = pred.Predictions[offset].GetCards(colType);
+                ModLogger.Info($"│  → CardPredictionOffset = {offset} (counter={pred.BaseCounter + offset})");
+                ModLogger.Info($"│  → Predicted {colType}: [{string.Join(", ", predictedCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}]");
+                _cardsRevealed++;
+                pred.OnColumnRevealed(colType, 6);
+                break;
+            }
+            case CrystalSphereRelic relic:
+            {
+                itemDesc = $"Relic at ({relic.Position.X},{relic.Position.Y}) size=({relic.Size.X}x{relic.Size.Y})";
+                rngImpact = "ToReward: 0 RNG (stores RNG via SetRng)\n" +
+                           "│  Populate: depends on RelicFactory.PullNextRelicFromFront";
+                predictable = true;
+                _relicsRevealed++;
+                pred.OnColumnRevealed(ColumnType.Relic, 1);
+                break;
+            }
+            case CrystalSpherePotion potion:
+            {
+                itemDesc = $"Potion #{_potionsRevealed + 1} at ({potion.Position.X},{potion.Position.Y}) size=({potion.Size.X}x{potion.Size.Y})";
+                rngImpact = "ToReward: +1 RNG (NextItem — picks random potion from rarity pool)\n" +
+                           "│  Populate: 0 RNG (potion already set in ToReward)\n" +
+                           "│  ⚠ This RNG runs before ALL card Populates (Phase 1)!";
+                predictable = true;
+                _potionsRevealed++;
+                pred.OnPotionRevealed(potion);
+                break;
+            }
+            case CrystalSphereCurse curse:
+            {
+                itemDesc = $"Curse at ({curse.Position.X},{curse.Position.Y}) size=({curse.Size.X}x{curse.Size.Y})";
+                rngImpact = "ToReward: returns null (no reward)\n" +
+                           "│  Effect: immediately adds Doubt to deck";
+                predictable = false;
+                _cursesRevealed++;
+                break;
+            }
+            default:
+                itemDesc = $"Unknown: {__instance.GetType().Name}";
+                rngImpact = "Unknown RNG impact";
+                predictable = false;
+                break;
+        }
+
+        ModLogger.Info($"│  Revealed: {itemDesc}");
+        ModLogger.Info($"│  RNG Impact:");
+        foreach (var line in rngImpact.Split('\n'))
+            ModLogger.Info($"│    {line}");
+        ModLogger.Info($"│  Predictable: {(predictable ? "YES" : "NO (not part of reward RNG)")}");
+        ModLogger.Info($"│  Revealed so far: {_goldsRevealed}G {_potionsRevealed}P {_cardsRevealed}C {_relicsRevealed}R {_cursesRevealed}Curse");
+        ModLogger.Info($"│  Click {_divinationClick}/{_divinationTotal}, RNG offset: {pred.CurrentOffset}");
+        ModLogger.Info($"├──────────────────────────────────────────────────────────────┤");
+
+        _revealLog.Add($"Click {_divinationClick}: {itemDesc}");
     }
 
-    // ============= Patch 2b: Actual card logging (Populate hook) =============
+    // ============= Patch 4: ToReward per subclass (virtual override requires per-type patching) =============
+
+    [HarmonyPatch(typeof(CrystalSphereGold), nameof(CrystalSphereGold.ToReward))]
+    [HarmonyPrefix]
+    public static void Gold_ToReward_Prefix(CrystalSphereGold __instance, Player owner, Rng rng)
+    {
+        if (CrystalSpherePredictor.Instance == null) return;
+        ModLogger.Info($"  [Phase1-ToReward] CrystalSphereGold → counter: {rng.Counter} (consumes 0 RNG)");
+    }
+
+    [HarmonyPatch(typeof(CrystalSpherePotion), nameof(CrystalSpherePotion.ToReward))]
+    [HarmonyPrefix]
+    public static void Potion_ToReward_Prefix(CrystalSpherePotion __instance, Player owner, Rng rng)
+    {
+        if (CrystalSpherePredictor.Instance == null) return;
+        ModLogger.Info($"  [Phase1-ToReward] CrystalSpherePotion → counter before: {rng.Counter}");
+    }
+
+    [HarmonyPatch(typeof(CrystalSpherePotion), nameof(CrystalSpherePotion.ToReward))]
+    [HarmonyPostfix]
+    public static void Potion_ToReward_Postfix(CrystalSpherePotion __instance, Player owner, Rng rng)
+    {
+        if (CrystalSpherePredictor.Instance == null) return;
+        ModLogger.Info($"  [Phase1-ToReward] CrystalSpherePotion → counter after:  {rng.Counter} (+1 NextItem)");
+    }
+
+    [HarmonyPatch(typeof(CrystalSphereCardReward), nameof(CrystalSphereCardReward.ToReward))]
+    [HarmonyPrefix]
+    public static void Card_ToReward_Prefix(CrystalSphereCardReward __instance, Player owner, Rng rng)
+    {
+        if (CrystalSpherePredictor.Instance == null) return;
+        ModLogger.Info($"  [Phase1-ToReward] CrystalSphereCardReward → counter: {rng.Counter} (stores RNG, 0 consumed)");
+    }
+
+    [HarmonyPatch(typeof(CrystalSphereRelic), nameof(CrystalSphereRelic.ToReward))]
+    [HarmonyPrefix]
+    public static void Relic_ToReward_Prefix(CrystalSphereRelic __instance, Player owner, Rng rng)
+    {
+        if (CrystalSpherePredictor.Instance == null) return;
+        ModLogger.Info($"  [Phase1-ToReward] CrystalSphereRelic → counter: {rng.Counter} (stores RNG, 0 consumed)");
+    }
+
+    // CrystalSphereCurse does NOT override ToReward — inherits base (returns null)
+
+    // ============= Patch 5: Populate diagnostics =============
+
+    [HarmonyPatch(typeof(GoldReward), nameof(GoldReward.Populate))]
+    [HarmonyPrefix]
+    public static void GoldReward_Populate_Prefix(GoldReward __instance)
+    {
+        if (CrystalSpherePredictor.Instance == null) return;
+        var rng = (Rng?)_rngOverrideField?.GetValue(__instance);
+        if (rng != null)
+            ModLogger.Info($"  [Phase2-Populate] GoldReward (amount={__instance.Amount}) → counter before: {rng.Counter}");
+    }
+
+    [HarmonyPatch(typeof(GoldReward), nameof(GoldReward.Populate))]
+    [HarmonyPostfix]
+    public static void GoldReward_Populate_Postfix(GoldReward __instance)
+    {
+        if (CrystalSpherePredictor.Instance == null) return;
+        var rng = (Rng?)_rngOverrideField?.GetValue(__instance);
+        if (rng != null)
+            ModLogger.Info($"  [Phase2-Populate] GoldReward → counter after: {rng.Counter} (+1 NextInt)");
+    }
+
+    [HarmonyPatch(typeof(CardReward), nameof(CardReward.Populate))]
+    [HarmonyPrefix]
+    public static void CardReward_Populate_Prefix(CardReward __instance)
+    {
+        if (CrystalSpherePredictor.Instance == null) return;
+        try
+        {
+            var optProp = typeof(CardReward).GetProperty("Options", BindingFlags.NonPublic | BindingFlags.Instance);
+            var options = optProp?.GetValue(__instance);
+            if (options != null)
+            {
+                var rngOverrideProp = options.GetType().GetProperty("RngOverride");
+                var rng = (Rng?)rngOverrideProp?.GetValue(options);
+                if (rng != null)
+                    ModLogger.Info($"  [Phase2-Populate] CardReward → counter before: {rng.Counter}");
+                else
+                    ModLogger.Info($"  [Phase2-Populate] CardReward → RngOverride is null, using PlayerRng");
+            }
+        }
+        catch (Exception ex) { ModLogger.Info($"  [Phase2-Populate] CardReward error: {ex.Message}"); }
+    }
 
     [HarmonyPatch(typeof(CardReward), nameof(CardReward.Populate))]
     [HarmonyPostfix]
     public static void CardReward_Populate_Postfix(CardReward __instance)
     {
         if (CrystalSpherePredictor.Instance == null) return;
-        if (!PredictEverythingConfig.Instance.VerboseLogging) return;
         try
         {
             var cardsProp = typeof(CardReward).GetProperty("Cards");
-            if (cardsProp != null)
+            if (cardsProp == null) return;
+            var cards = cardsProp.GetValue(__instance) as System.Collections.IEnumerable;
+            if (cards == null) return;
+            var names = new List<string>();
+            foreach (var c in cards)
             {
-                var cards = cardsProp.GetValue(__instance) as System.Collections.IEnumerable;
-                if (cards != null)
+                var titleProp = c.GetType().GetProperty("Title");
+                if (titleProp != null)
                 {
-                    var names = new List<string>();
-                    foreach (var c in cards)
+                    var title = titleProp.GetValue(c);
+                    if (title != null)
                     {
-                        var titleProp = c.GetType().GetProperty("Title");
-                        if (titleProp != null)
-                        {
-                            var title = titleProp.GetValue(c);
-                            if (title != null)
-                            {
-                                var fmtMethod = title.GetType().GetMethod("GetFormattedText");
-                                if (fmtMethod != null)
-                                    names.Add((string?)fmtMethod.Invoke(title, null) ?? "?");
-                                else
-                                    names.Add(title.ToString() ?? "?");
-                            }
-                            else names.Add("?");
-                        }
-                        else names.Add("?");
+                        var fmtMethod = title.GetType().GetMethod("GetFormattedText");
+                        if (fmtMethod != null)
+                            names.Add((string?)fmtMethod.Invoke(title, null) ?? "?");
+                        else
+                            names.Add(title.ToString() ?? "?");
                     }
-                    ModLogger.Info($"  ACTUAL cards: [{string.Join(", ", names)}]");
+                    else names.Add("?");
                 }
+                else names.Add("?");
             }
+
+            var optProp = typeof(CardReward).GetProperty("Options", BindingFlags.NonPublic | BindingFlags.Instance);
+            var options = optProp?.GetValue(__instance);
+            var rngOverrideProp = options?.GetType().GetProperty("RngOverride");
+            var rng = (Rng?)rngOverrideProp?.GetValue(options);
+            int counterAfter = rng?.Counter ?? -1;
+            ModLogger.Info($"  [Phase2-Populate] CardReward → counter after: {counterAfter} (+6 RNG)");
+            ModLogger.Info($"  [Phase2-Populate]   ACTUAL CARDS: [{string.Join(", ", names)}]");
         }
-        catch (Exception ex) { ModLogger.Info($"  ACTUAL err: {ex.Message}"); }
+        catch (Exception ex) { ModLogger.Info($"  [Phase2-Populate] CardReward postfix error: {ex.Message}"); }
     }
 
-    // ============= Patch 2c: Reward logging (AddReward hook) =============
+    // ============= Patch 5: MinigameComplete — full summary =============
 
-    [HarmonyPatch(typeof(CrystalSphereMinigame), nameof(CrystalSphereMinigame.AddReward))]
-    [HarmonyPostfix]
-    public static void AddReward_Postfix(CrystalSphereMinigame __instance)
-    {
-        if (CrystalSpherePredictor.Instance == null) return;
-        if (!PredictEverythingConfig.Instance.VerboseLogging) return;
-        try
-        {
-            var rewardsField = typeof(CrystalSphereMinigame).GetField("_rewards",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            var rewards = rewardsField?.GetValue(__instance) as System.Collections.IList;
-            if (rewards == null || rewards.Count == 0) return;
-            var last = rewards[rewards.Count - 1];
-            var type = last.GetType();
-            // CardReward
-            var cardsProp = type.GetProperty("Cards");
-            if (cardsProp != null)
-            {
-                var cards = cardsProp.GetValue(last) as System.Collections.IEnumerable;
-                if (cards != null)
-                {
-                    var names = new List<string>();
-                    foreach (var c in cards)
-                    {
-                        var titleProp = c.GetType().GetProperty("Title");
-                        if (titleProp != null)
-                        {
-                            var title = titleProp.GetValue(c) as MegaCrit.Sts2.Core.Localization.LocString;
-                            names.Add(title?.GetFormattedText() ?? "?");
-                        }
-                    }
-                    ModLogger.Info($"  ACTUAL: [{string.Join(", ", names)}]");
-                    return;
-                }
-            }
-            // RelicReward
-            var relicField = type.GetField("_relic", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (relicField != null)
-            {
-                var relic = relicField.GetValue(last);
-                if (relic != null)
-                {
-                    var titleProp = relic.GetType().GetProperty("Title");
-                    if (titleProp != null)
-                    {
-                        var title = titleProp.GetValue(relic) as MegaCrit.Sts2.Core.Localization.LocString;
-                        ModLogger.Info($"  ACTUAL: {title?.GetFormattedText() ?? "?"}");
-                        return;
-                    }
-                }
-            }
-            // PotionReward
-            var potionField = type.GetField("_potion", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (potionField != null)
-            {
-                var potion = potionField.GetValue(last);
-                if (potion != null)
-                {
-                    var titleProp = potion.GetType().GetProperty("Title");
-                    if (titleProp != null)
-                    {
-                        var title = titleProp.GetValue(potion) as MegaCrit.Sts2.Core.Localization.LocString;
-                        ModLogger.Info($"  ACTUAL: {title?.GetFormattedText() ?? "?"}");
-                        return;
-                    }
-                }
-            }
-        }
-        catch (Exception ex) { ModLogger.Info($"  ACTUAL err: {ex.Message}"); }
-    }
-
-    // ============= Patch 3: Card column reveal =============
-
-    /// <summary>
-    /// When a card reward column is revealed, determine the rarity via
-    /// reflection and notify the predictor with the appropriate column type.
-    /// </summary>
-    [HarmonyPatch(typeof(CrystalSphereCardReward), nameof(CrystalSphereCardReward.RevealItem))]
+    [HarmonyPatch(typeof(CrystalSphereMinigame), "CompleteMinigame")]
     [HarmonyPrefix]
-    public static void CrystalSphereCardReward_RevealItem_Prefix(
-        CrystalSphereCardReward __instance, Player owner)
+    public static void CompleteMinigame_Prefix(CrystalSphereMinigame __instance)
     {
-        if (CrystalSpherePredictor.Instance == null) return;
-        if (!LocalContext.IsMe(owner)) return;
-
-        var rarity = (CardRarity?)_rarityField?.GetValue(__instance) ?? CardRarity.Common;
-        var colType = rarity switch
-        {
-            CardRarity.Rare => ColumnType.Rare,
-            CardRarity.Uncommon => ColumnType.Uncommon,
-            _ => ColumnType.Common
-        };
+        if (CrystalSpherePredictor.Instance?.IsActive != true) return;
         var pred = CrystalSpherePredictor.Instance;
-        var offset = pred.CurrentOffset;
-        if (PredictEverythingConfig.Instance.VerboseLogging)
-        {
-            var predictedCards = pred.Predictions[offset].GetCards(colType);
-            ModLogger.Info($"REVEAL {colType} at offset {offset} — predicted: [{string.Join(", ", predictedCards.Select(c => c.Upgraded ? c.Name + "+" : c.Name))}]");
-        }
-        CrystalSpherePredictor.Instance.OnColumnRevealed(colType, 6);
+
+        ModLogger.Info("");
+        ModLogger.Info($"╔══════════════════════════════════════════════════════════════╗");
+        ModLogger.Info($"║         COMPLETE MINIGAME — REWARD GENERATION                ║");
+        ModLogger.Info($"╠══════════════════════════════════════════════════════════════╣");
+
+        int revealed = _goldsRevealed + _potionsRevealed + _cardsRevealed + _relicsRevealed + _cursesRevealed;
+        int unrevealed = 15 - revealed;
+        ModLogger.Info($"║ Revealed: {revealed,2} items ({_goldsRevealed}G {_potionsRevealed}P {_cardsRevealed}C {_relicsRevealed}R {_cursesRevealed}Curse)");
+        ModLogger.Info($"║ Unrevealed: {unrevealed,2} items remain hidden");
+        ModLogger.Info($"╚══════════════════════════════════════════════════════════════╝");
+        ModLogger.Info("");
+        ModLogger.Info(">>> Phase 1: ToReward for ALL revealed items (in reveal order)");
+        ModLogger.Info("    (All potion RNG consumed here, before any Populate)");
     }
 
-    [HarmonyPatch(typeof(CrystalSphereCardReward), nameof(CrystalSphereCardReward.RevealItem))]
+    [HarmonyPatch(typeof(CrystalSphereMinigame), "CompleteMinigame")]
     [HarmonyPostfix]
-    public static void CrystalSphereCardReward_RevealItem_Postfix(CrystalSphereCardReward __instance)
+    public static void CompleteMinigame_Postfix(CrystalSphereMinigame __instance)
     {
-        if (CrystalSpherePredictor.Instance == null) return;
-        if (!PredictEverythingConfig.Instance.VerboseLogging) return;
-        var gridField = typeof(CrystalSphereCardReward).GetField("_grid", BindingFlags.NonPublic | BindingFlags.Instance);
-        var grid = gridField?.GetValue(__instance) as CrystalSphereMinigame;
-        int actualCounter = grid?.Rng.Counter ?? -1;
-        ModLogger.Info($"  RNG counter after Card: {actualCounter}");
-    }
-
-    [HarmonyPatch(typeof(CrystalSphereCardReward), nameof(CrystalSphereCardReward.RevealItem))]
-    // ============= Patch 4: Relic reveal =============
-
-    /// <summary>
-    /// When the relic column is revealed, notify the predictor.
-    /// Consumes 1 RNG slot.
-    /// </summary>
-    [HarmonyPatch(typeof(CrystalSphereRelic), nameof(CrystalSphereRelic.RevealItem))]
-    [HarmonyPrefix]
-    public static void CrystalSphereRelic_RevealItem_Prefix(Player owner)
-    {
-        if (CrystalSpherePredictor.Instance == null) return;
-        if (!LocalContext.IsMe(owner)) return;
+        if (CrystalSpherePredictor.Instance?.IsActive != true) return;
         var pred = CrystalSpherePredictor.Instance;
-        var offset = pred.CurrentOffset;
-        if (PredictEverythingConfig.Instance.VerboseLogging)
-            ModLogger.Info($"REVEAL Relic at offset {offset} — predicted: [{pred.Predictions[offset].Relic.Name}]");
-        pred.OnColumnRevealed(ColumnType.Relic, 1);
-    }
 
-    [HarmonyPatch(typeof(CrystalSphereRelic), nameof(CrystalSphereRelic.RevealItem))]
-    [HarmonyPostfix]
-    public static void CrystalSphereRelic_RevealItem_Postfix(CrystalSphereRelic __instance)
-    {
-        if (CrystalSpherePredictor.Instance == null) return;
-        if (!PredictEverythingConfig.Instance.VerboseLogging) return;
-        var gridField = typeof(CrystalSphereRelic).GetField("_grid", BindingFlags.NonPublic | BindingFlags.Instance);
-        var grid = gridField?.GetValue(__instance) as CrystalSphereMinigame;
-        int actualCounter = grid?.Rng.Counter ?? -1;
-        ModLogger.Info($"  RNG counter after Relic: {actualCounter}");
-    }
+        ModLogger.Info("");
+        ModLogger.Info(">>> Phase 2 Complete: All Populates finished");
+        ModLogger.Info("");
 
-    // ============= Patch 5: Potion reveal =============
+        // Reveal history
+        ModLogger.Info("=== REVEAL HISTORY ===");
+        for (int i = 0; i < _revealLog.Count; i++)
+            ModLogger.Info($"  {i + 1}. {_revealLog[i]}");
 
-    /// <summary>
-    /// When a potion item is revealed, shift locked/planned column offsets
-    /// and advance the predictor's potion counter.
-    /// </summary>
-    [HarmonyPatch(typeof(CrystalSpherePotion), nameof(CrystalSpherePotion.RevealItem))]
-    [HarmonyPrefix]
-    public static void CrystalSpherePotion_RevealItem_Prefix(CrystalSpherePotion __instance, Player owner)
-    {
-        if (CrystalSpherePredictor.Instance == null) return;
-        if (!LocalContext.IsMe(owner)) return;
-        var pred = CrystalSpherePredictor.Instance;
-        if (PredictEverythingConfig.Instance.VerboseLogging)
+        // Prediction accuracy
+        ModLogger.Info("");
+        ModLogger.Info("=== PREDICTION ACCURACY ===");
+        foreach (var col in new[] { ColumnType.Rare, ColumnType.Uncommon, ColumnType.Common, ColumnType.Relic })
         {
-            var gridField = typeof(CrystalSpherePotion).GetField("_grid", BindingFlags.NonPublic | BindingFlags.Instance);
-            var grid = gridField?.GetValue(__instance) as CrystalSphereMinigame;
-            int actualCounter = grid?.Rng.Counter ?? -1;
-            ModLogger.Info($"  RNG counter before Potion: {actualCounter}");
-            ModLogger.Info($"REVEAL Potion #{pred.RevealedPotionCount + 1}/{pred.TotalPotionCount} at offset {pred.CurrentOffset}");
+            var state = col switch
+            {
+                ColumnType.Rare => pred.Rare,
+                ColumnType.Uncommon => pred.Uncommon,
+                ColumnType.Common => pred.Common,
+                ColumnType.Relic => pred.Relic,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+
+            if (state.IsLocked)
+            {
+                string colName = col switch
+                {
+                    ColumnType.Rare => "金卡(Rare)",
+                    ColumnType.Uncommon => "蓝卡(Uncommon)",
+                    ColumnType.Common => "白卡(Common)",
+                    ColumnType.Relic => "遗物(Relic)",
+                    _ => col.ToString()
+                };
+                int offset = state.LockedAt;
+                var prediction = pred.Predictions[offset];
+                string predictedStr = col switch
+                {
+                    ColumnType.Relic => prediction.Relic.Name,
+                    _ => string.Join(", ", prediction.GetCards(col).Select(c => c.Upgraded ? c.Name + "+" : c.Name))
+                };
+                ModLogger.Info($"  [{colName}] offset={offset}: predicted [{predictedStr}]");
+            }
+            else
+            {
+                ModLogger.Info($"  [{col}] NOT REVEALED");
+            }
         }
-        pred.OnPotionRevealed(__instance);
+
+        ModLogger.Info("");
+        ModLogger.Info($"╔══════════════════════════════════════════════════════════════╗");
+        ModLogger.Info($"║         EVENT #{_eventCounter} COMPLETE                                  ║");
+        ModLogger.Info($"╚══════════════════════════════════════════════════════════════╝");
+        ModLogger.Info("");
     }
 
     // ============= Patch 6: Mask transparency =============
 
-    /// <summary>
-    /// After NCrystalSphereMask enters the scene, apply transparency
-    /// to make hidden items partially visible behind the fog.
-    /// </summary>
     [HarmonyPatch(typeof(NCrystalSphereMask), nameof(NCrystalSphereMask._Ready))]
     [HarmonyPostfix]
     public static void NCrystalSphereMask_Ready_Postfix(NCrystalSphereMask __instance)
     {
         if (!PredictEverythingConfig.Instance.EnableTransparentMask) return;
-        // Set alpha to 25% — grid contents become faintly visible through the fog
         __instance.SelfModulate = new Color(1f, 1f, 1f, 0.25f);
     }
 
-    // ============= Patch 7: Screen ready — create prediction panel =============
+    // ============= Patch 7: Screen ready — create UI panels =============
 
-    /// <summary>
-    /// After NCrystalSphereScreen._Ready, create InfoPanel and LockedDashboard
-    /// if the predictor is active and the respective config flags are enabled.
-    /// </summary>
     [HarmonyPatch(typeof(NCrystalSphereScreen), "_Ready")]
     [HarmonyPostfix]
     public static void Screen_Ready_Postfix(NCrystalSphereScreen __instance)
@@ -333,7 +449,6 @@ public static class PredictEverythingPatches
         if (PredictEverythingConfig.Instance.EnableLockedDashboard)
             LockedDashboard.Create(__instance);
 
-        // Show first-time tutorial if not seen yet
         if (!PredictEverythingConfig.Instance.TutorialShown)
             TutorialPopup.ShowIfNeeded(__instance);
     }

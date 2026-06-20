@@ -1,7 +1,7 @@
 #!/bin/bash
 # Auto-deploy: kill game, build, deploy DLL + locales, launch
 GODOT_EXE="D:/dev/mod-dev/godot/Godot_v4.5.1-stable_mono_win64/Godot_v4.5.1-stable_mono_win64.exe"
-PROJECT_DIR="D:/project/game/StS2/SlayTheSpire2"
+PROJECT_DIR="D:/project/game/StS2/SlayTheSpire2-v0.107.1"
 MOD_DIR="D:/project/game/StS2/all-mods/PredictEverything"
 RUNTIME_DIR="D:/dev/mod-dev/godot/Godot_v4.5.1-stable_mono_win64/mods/PredictEverything"
 # 1. Kill ALL Godot processes and wait for DLL to unlock
