@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
@@ -15,8 +16,8 @@ public static class I18n
     private static Dictionary<string, string> _current = new();
     private static readonly Dictionary<string, Dictionary<string, string>> _cache = new();
 
-    private static string LocaleDir => Path.Combine(
-        Path.GetDirectoryName(OS.GetExecutablePath()) ?? "", "mods", "PredictEverything", "locale");
+    private static string ModDir => Path.GetDirectoryName(typeof(I18n).Assembly.Location) ?? "";
+    private static string LocaleDir => Path.Combine(ModDir, "locale");
 
     public static void Initialize()
     {

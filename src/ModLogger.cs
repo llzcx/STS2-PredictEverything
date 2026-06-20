@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using Godot;
 using MegaCrit.Sts2.Core.Logging;
@@ -11,11 +12,11 @@ public static class ModLogger
     private static string? _logPath;
     private static readonly object _lock = new();
 
+    public static string ModDir => Path.GetDirectoryName(typeof(ModLogger).Assembly.Location) ?? "";
+
     public static void Init()
     {
-        string executablePath = OS.GetExecutablePath();
-        string directoryName = Path.GetDirectoryName(executablePath) ?? "";
-        _logPath = Path.Combine(directoryName, "mods", "PredictEverything", "logs", "predict_everything.log");
+        _logPath = Path.Combine(ModDir, "logs", "predict_everything.log");
         try
         {
             var dir = Path.GetDirectoryName(_logPath);
@@ -29,8 +30,8 @@ public static class ModLogger
         {
             try
             {
-                _logPath = Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory, "mods", "PredictEverything", "logs", "predict_everything.log");
+                string exeDir = Path.GetDirectoryName(OS.GetExecutablePath()) ?? "";
+                _logPath = Path.Combine(exeDir, "mods", "PredictEverything", "logs", "predict_everything.log");
                 var dir = Path.GetDirectoryName(_logPath);
                 if (dir != null) { Directory.CreateDirectory(dir); File.WriteAllText(_logPath, "", Encoding.UTF8); }
                 // Write PID file for auto-deploy
