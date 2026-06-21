@@ -416,28 +416,41 @@ public class CrystalSpherePredictor
         }
 
         int cur = CardPredictionOffset;
-        int totalGoldDelta = 0;
-        int cpIdx = 0, rpIdx = 0;
+        int potIdx = RevealedPotionCount; // global potion counter shared by CP and RP
         var steps = new List<string>();
         foreach (var (type, offset, itemLabel, benefit) in rawPath)
         {
-            int d = offset - cur;
-            totalGoldDelta += d;
-            if (d > 0) steps.Add(I18n.Tr("gold_step") + d);
             string label;
             if (itemLabel != null)
             {
-                label = $"{itemLabel}@{offset}";
+                // Filler stone — append prediction name for potions
+                string? extra = itemLabel switch
+                {
+                    "白药水" => (potIdx < CommonPotionSequence?.Length ? CommonPotionSequence[potIdx]?.Name : null),
+                    "金药水" => (potIdx < RarePotionSequence?.Length ? RarePotionSequence[potIdx]?.Name : null),
+                    _ => null
+                };
+                if (extra != null) potIdx++;
+                label = extra != null ? $"{itemLabel}@{offset}({extra})" : $"{itemLabel}@{offset}";
                 steps.Add(label);
                 cur = offset + benefit;
             }
             else
             {
                 var col = type!.Value;
+                bool isPot = col == ColumnType.CommonPotion || col == ColumnType.RarePotion;
+                string? potName = null;
+                if (isPot)
+                {
+                    potName = col == ColumnType.CommonPotion
+                        ? (potIdx < CommonPotionSequence?.Length ? CommonPotionSequence[potIdx]?.Name : null)
+                        : (potIdx < RarePotionSequence?.Length ? RarePotionSequence[potIdx]?.Name : null);
+                    potIdx++;
+                }
                 label = col switch
                 {
-                    ColumnType.CommonPotion => $"白药水@{offset}({CommonPotionSequence?[cpIdx++]?.Name ?? "?"})",
-                    ColumnType.RarePotion => $"金药水@{offset}({RarePotionSequence?[rpIdx++]?.Name ?? "?"})",
+                    ColumnType.CommonPotion => $"白药水@{offset}({potName ?? "?"})",
+                    ColumnType.RarePotion => $"金药水@{offset}({potName ?? "?"})",
                     _ => GetColumnState(col).Label + $"@{offset}"
                 };
                 steps.Add(label);
@@ -446,7 +459,7 @@ public class CrystalSpherePredictor
         }
         var sequence = string.Join(" → ", steps);
         if (PredictEverythingConfig.Instance.VerboseLogging)
-            ModLogger.Info($"  Plan ({swPlan.Elapsed.TotalMilliseconds:F1}ms): {sequence} (goldCells={goldCells} goldDelta={totalGoldDelta} offset: {CardPredictionOffset}→{cur})");
+            ModLogger.Info($"  Plan ({swPlan.Elapsed.TotalMilliseconds:F1}ms): {sequence} (goldCells={goldCells} offset: {CardPredictionOffset}→{cur})");
         return (true, sequence, null);
     }
 
@@ -927,27 +940,39 @@ public class CrystalSpherePredictor
 
         var steps = new List<string>();
         int pos = CardPredictionOffset;
-        int totalG = 0;
-        int cpIdx = 0, rpIdx = 0;
+        int potIdx = RevealedPotionCount;
         foreach (var (type, offset, itemLabel, benefit) in best)
         {
-            int d = offset - pos;
-            totalG += d;
-            if (d > 0) steps.Add(I18n.Tr("gold_step") + d);
             string label;
             if (itemLabel != null)
             {
-                label = $"{itemLabel}@{offset}";
+                string? extra = itemLabel switch
+                {
+                    "白药水" => (potIdx < CommonPotionSequence?.Length ? CommonPotionSequence[potIdx]?.Name : null),
+                    "金药水" => (potIdx < RarePotionSequence?.Length ? RarePotionSequence[potIdx]?.Name : null),
+                    _ => null
+                };
+                if (extra != null) potIdx++;
+                label = extra != null ? $"{itemLabel}@{offset}({extra})" : $"{itemLabel}@{offset}";
                 steps.Add(label);
                 pos = offset + benefit;
             }
             else
             {
                 var col = type!.Value;
+                bool isPot = col == ColumnType.CommonPotion || col == ColumnType.RarePotion;
+                string? potName = null;
+                if (isPot)
+                {
+                    potName = col == ColumnType.CommonPotion
+                        ? (potIdx < CommonPotionSequence?.Length ? CommonPotionSequence[potIdx]?.Name : null)
+                        : (potIdx < RarePotionSequence?.Length ? RarePotionSequence[potIdx]?.Name : null);
+                    potIdx++;
+                }
                 label = col switch
                 {
-                    ColumnType.CommonPotion => $"白药水@{offset}({CommonPotionSequence?[cpIdx++]?.Name ?? "?"})",
-                    ColumnType.RarePotion => $"金药水@{offset}({RarePotionSequence?[rpIdx++]?.Name ?? "?"})",
+                    ColumnType.CommonPotion => $"白药水@{offset}({potName ?? "?"})",
+                    ColumnType.RarePotion => $"金药水@{offset}({potName ?? "?"})",
                     _ => GetColumnState(col).Label + $"@{offset}"
                 };
                 steps.Add(label);
@@ -956,7 +981,7 @@ public class CrystalSpherePredictor
         }
         var sequenceStr = string.Join(" -> ", steps);
         if (PredictEverythingConfig.Instance.VerboseLogging)
-            ModLogger.Info($"  OptPath result ({sw.Elapsed.TotalMilliseconds:F1}ms): [{sequenceStr}] gold={totalG} end={pos}");
+            ModLogger.Info($"  OptPath result ({sw.Elapsed.TotalMilliseconds:F1}ms): [{sequenceStr}] end={pos}");
         return (true, sequenceStr, null);
     }
 
@@ -1205,9 +1230,13 @@ public class CrystalSpherePredictor
         List<(ColumnType?, int, string?, int)>? best = null;
         int bestGold = int.MaxValue;
         int bestEnd = int.MaxValue;
+        int attempts = 0;
 
         foreach (var combo in combos)
         {
+            attempts++;
+            if (attempts > 60 && best != null) break;
+
             var targets = new List<(ColumnType type, int offset, int cost)>();
             for (int i = 0; i < targetGroups.Count; i++)
                 targets.Add((targetGroups[i].t, combo[i], targetGroups[i].cost));
@@ -1221,7 +1250,7 @@ public class CrystalSpherePredictor
                 bestGold = gold;
                 bestEnd = endOffset;
                 best = path;
-                // First feasible path in sorted order is near-optimal; keep scanning
+                if (gold == 0) break;
             }
         }
 
@@ -1250,10 +1279,12 @@ public class CrystalSpherePredictor
         List<(ColumnType?, int, string?, int)>? best = null;
         int bestGoldCells = int.MaxValue;
         int attempts = 0;
+        const int comboCap = 60; // combos sorted by distance; first N cover near-optimal
 
         foreach (var combo in combos)
         {
             attempts++;
+            if (attempts > comboCap && best != null) break;
             var targets = new List<GridTarget>();
 
             // Potion targets first (sorted by RevealIndex), auto-place at cur
@@ -1298,6 +1329,7 @@ public class CrystalSpherePredictor
             {
                 bestGoldCells = goldCells;
                 best = path;
+                if (goldCells == 0) break; // theoretical optimum — stop immediately
             }
         }
 

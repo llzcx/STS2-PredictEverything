@@ -160,20 +160,17 @@ public static partial class UnifiedPathFinder
     {
         const int inf = int.MaxValue / 2;
         var dp = new int[gap + 1];
-        var dpGold = new int[gap + 1];
         var dpTrace = new (int prevOff, int stoneIdx)[gap + 1];
         for (int i = 0; i <= gap; i++) dp[i] = inf;
 
         dp[0] = 0;
-        dpGold[0] = 0;
         dpTrace[0] = (-1, -1);
 
-        // Stones (0-1 knapsack for exact offset)
+        // Stones (0-1 knapsack for exact offset) — only real board items
         for (int si = 0; si < pool.Count; si++)
         {
             if (consumed[si]) continue;
             var stone = pool[si];
-            // Gold/curse items use sentinel ColumnType — never excluded as targets
             if (!stone.IsGold && !stone.IsCurse && targetTypes.Contains(stone.ColumnType)) continue;
             int b = stone.RngBenefit;
             int c = stone.GridCost;
@@ -186,37 +183,18 @@ public static partial class UnifiedPathFinder
                 if (nc < dp[i + b])
                 {
                     dp[i + b] = nc;
-                    dpGold[i + b] = dpGold[i];
                     dpTrace[i + b] = (i, si);
                 }
             }
         }
 
-        // Gold fill: for each reachable offset i, fill remaining with gold
-        int bestCost = inf;
-        int bestGold = 0;
-        int bestEnd = -1;
-        for (int i = 0; i <= gap; i++)
-        {
-            if (dp[i] == inf) continue;
-            int remaining = gap - i;
-            if (remaining > maxGold) continue;
-            int totalGold = dpGold[i] + remaining;
-            int totalCost = dp[i] + remaining; // gold costs 1 cell per offset
-            if (totalCost < bestCost)
-            {
-                bestCost = totalCost;
-                bestGold = totalGold;
-                bestEnd = i;
-            }
-        }
-
-        if (bestEnd < 0)
+        // Must fill the entire gap with real stones — no virtual gold
+        if (dp[gap] == inf || dp[gap] > maxGold)
             return (null, new List<int>(), 0);
 
         // Backtrack stone indices
         var indices = new List<int>();
-        int off = bestEnd;
+        int off = gap;
         while (off > 0 && dpTrace[off].stoneIdx >= 0)
         {
             indices.Add(dpTrace[off].stoneIdx);
@@ -224,8 +202,7 @@ public static partial class UnifiedPathFinder
         }
         indices.Reverse();
 
-        // Build filler list: all stones carry their DisplayLabel so the path
-        // shows every item the DP actually consumed.
+        // Build filler list with DisplayLabels
         var fillers = new List<(ColumnType? type, int benefit, string? label)>();
         foreach (int si in indices)
         {
@@ -234,12 +211,6 @@ public static partial class UnifiedPathFinder
             fillers.Add((null, stone.RngBenefit, label));
         }
 
-        // Virtual gold fills (no label — hidden, aggregated into gold_step by caller)
-        int stoneOffset = indices.Sum(si => pool[si].RngBenefit);
-        int goldRemaining = gap - stoneOffset;
-        for (int i = 0; i < goldRemaining; i++)
-            fillers.Add((null, 1, null));
-
-        return (fillers, indices, bestGold);
+        return (fillers, indices, dp[gap]); // goldCells = actual cell cost of stones used
     }
 }

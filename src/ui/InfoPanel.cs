@@ -751,10 +751,7 @@ public partial class InfoPanel : Control
         }
         else
         {
-            int stepCount = 1;
-            for (int i = 0; i < sequence.Length; i++)
-                if (sequence[i] == '→') stepCount++;
-            _planLabel.Text = $"[b]{I18n.Tr("plan_prefix")}[/b]: {stepCount} {I18n.Tr("plan_clicks")} | {sequence}";
+            _planLabel.Text = sequence;
         }
     }
 
@@ -1010,7 +1007,7 @@ public partial class InfoPanel : Control
             if (!feasible && error != null)
                 _planLabel.Text = $"[color=#FF6B35]{error}[/color]";
             else if (!string.IsNullOrEmpty(sequence))
-                _planLabel.Text = $"[b]{I18n.Tr("plan_prefix")}[/b]: {sequence}";
+                _planLabel.Text = sequence;
             else if (rareT == null && uncT == null && comT == null && relT == null && commonPotT == null && rarePotT == null)
                 _planLabel.Text = "";
         }
