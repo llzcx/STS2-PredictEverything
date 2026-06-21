@@ -7,6 +7,7 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent;
 using MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent.CrystalSphereItems;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
@@ -83,7 +84,7 @@ public static class PredictEverythingPatches
             foreach (var item in items)
                 ModLogger.Info($"  {item.GetType().Name,-22} pos=({item.Position.X,2},{item.Position.Y,2}) size=({item.Size.X},{item.Size.Y})");
             ModLogger.Info("--- Prediction Table (all offsets) ---");
-            for (int i = 0; i <= 26; i++)
+            for (int i = 0; i <= CrystalSpherePredictor.MaxOffset; i++)
             {
                 var p = predictor.Predictions[i];
                 ModLogger.Info($"  Offset {i,2}: " +
@@ -112,6 +113,8 @@ public static class PredictEverythingPatches
     [HarmonyPrefix]
     public static void RevealItem_Prefix(CrystalSphereItem __instance, Player _)
     {
+        try
+        {
         if (CrystalSpherePredictor.Instance == null) return;
         var pred = CrystalSpherePredictor.Instance;
 
@@ -201,6 +204,11 @@ public static class PredictEverythingPatches
         ModLogger.Info($"├──────────────────────────────────────────────────────────────┤");
 
         _revealLog.Add($"Click {_divinationClick}: {itemDesc}");
+        }
+        catch (Exception ex)
+        {
+            ModLogger.Error($"RevealItem_Prefix crashed — original RevealItem WILL still run. Error: {ex}");
+        }
     }
 
     // ============= Patch 4: ToReward per subclass (virtual override requires per-type patching) =============
@@ -223,10 +231,12 @@ public static class PredictEverythingPatches
 
     [HarmonyPatch(typeof(CrystalSpherePotion), nameof(CrystalSpherePotion.ToReward))]
     [HarmonyPostfix]
-    public static void Potion_ToReward_Postfix(CrystalSpherePotion __instance, Player owner, Rng rng)
+    public static void Potion_ToReward_Postfix(CrystalSpherePotion __instance, Player owner, Rng rng, Reward? __result)
     {
         if (CrystalSpherePredictor.Instance == null) return;
-        ModLogger.Info($"  [Phase1-ToReward] CrystalSpherePotion → counter after:  {rng.Counter} (+1 NextItem)");
+        string actualName = (__result as PotionReward)?.Potion?.Title?.GetFormattedText() ?? "?";
+        CrystalSpherePredictor.Instance.UpdateActualPotionName(__instance, actualName);
+        ModLogger.Info($"  [Phase1-ToReward] CrystalSpherePotion → counter after:  {rng.Counter} (+1 NextItem), ACTUAL: [{actualName}]");
     }
 
     [HarmonyPatch(typeof(CrystalSphereCardReward), nameof(CrystalSphereCardReward.ToReward))]
@@ -333,6 +343,47 @@ public static class PredictEverythingPatches
         catch (Exception ex) { ModLogger.Info($"  [Phase2-Populate] CardReward postfix error: {ex.Message}"); }
     }
 
+    [HarmonyPatch(typeof(RelicReward), nameof(RelicReward.Populate))]
+    [HarmonyPrefix]
+    public static void RelicReward_Populate_Prefix(RelicReward __instance)
+    {
+        if (CrystalSpherePredictor.Instance == null) return;
+        var rng = (Rng?)_rngOverrideField?.GetValue(__instance);
+        if (rng != null)
+            ModLogger.Info($"  [Phase2-Populate] RelicReward → counter before: {rng.Counter}");
+    }
+
+    [HarmonyPatch(typeof(RelicReward), nameof(RelicReward.Populate))]
+    [HarmonyPostfix]
+    public static void RelicReward_Populate_Postfix(RelicReward __instance)
+    {
+        if (CrystalSpherePredictor.Instance == null) return;
+        var rng = (Rng?)_rngOverrideField?.GetValue(__instance);
+        int counterAfter = rng?.Counter ?? -1;
+        string actualName = "?";
+        try
+        {
+            var relicProp = typeof(RelicReward).GetProperty("ClaimedRelic", BindingFlags.Public | BindingFlags.Instance)
+                ?? typeof(RelicReward).GetProperty("_relic", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (relicProp != null)
+            {
+                var relic = relicProp.GetValue(__instance);
+                if (relic != null)
+                {
+                    var titleProp = relic.GetType().GetProperty("Title");
+                    if (titleProp != null)
+                    {
+                        var title = titleProp.GetValue(relic);
+                        var fmtMethod = title?.GetType().GetMethod("GetFormattedText");
+                        actualName = (string?)fmtMethod?.Invoke(title, null) ?? title?.ToString() ?? "?";
+                    }
+                }
+            }
+        }
+        catch { }
+        ModLogger.Info($"  [Phase2-Populate] RelicReward → counter after: {counterAfter} (+1 PullNextRelicFromFront), ACTUAL: [{actualName}]");
+    }
+
     // ============= Patch 5: MinigameComplete — full summary =============
 
     [HarmonyPatch(typeof(CrystalSphereMinigame), "CompleteMinigame")]
@@ -376,7 +427,7 @@ public static class PredictEverythingPatches
         // Prediction accuracy
         ModLogger.Info("");
         ModLogger.Info("=== PREDICTION ACCURACY ===");
-        foreach (var col in new[] { ColumnType.Rare, ColumnType.Uncommon, ColumnType.Common, ColumnType.Relic })
+        foreach (var col in new[] { ColumnType.Rare, ColumnType.Uncommon, ColumnType.Common, ColumnType.Relic, ColumnType.CommonPotion, ColumnType.RarePotion })
         {
             var state = col switch
             {
@@ -384,10 +435,22 @@ public static class PredictEverythingPatches
                 ColumnType.Uncommon => pred.Uncommon,
                 ColumnType.Common => pred.Common,
                 ColumnType.Relic => pred.Relic,
+                ColumnType.CommonPotion => pred.CommonPotionColumn,
+                ColumnType.RarePotion => pred.RarePotionColumn,
                 _ => throw new ArgumentOutOfRangeException()
             };
 
-            if (state.IsLocked)
+            bool isPotionCol = col == ColumnType.CommonPotion || col == ColumnType.RarePotion;
+            bool hasPotionRevealed = false;
+            if (isPotionCol)
+            {
+                var rarity = col == ColumnType.CommonPotion ? PotionRarity.Common : PotionRarity.Rare;
+                for (int i = 0; i < pred.PotionData.TotalCount; i++)
+                    if (pred.PotionData.Revealed[i] && pred.PotionData.Rarities[i] == rarity)
+                        { hasPotionRevealed = true; break; }
+            }
+
+            if (isPotionCol ? hasPotionRevealed : state.IsLocked)
             {
                 string colName = col switch
                 {
@@ -395,8 +458,33 @@ public static class PredictEverythingPatches
                     ColumnType.Uncommon => "蓝卡(Uncommon)",
                     ColumnType.Common => "白卡(Common)",
                     ColumnType.Relic => "遗物(Relic)",
+                    ColumnType.CommonPotion => "白药水(Common)",
+                    ColumnType.RarePotion => "金药水(Rare)",
                     _ => col.ToString()
                 };
+                if (col == ColumnType.CommonPotion || col == ColumnType.RarePotion)
+                {
+                    bool isRare = col == ColumnType.RarePotion;
+                    // Sort ALL revealed potions globally by LockedAt (reveal order)
+                    var allRevealed = new List<(int idx, int lockedAt, bool rare)> ();
+                    for (int i = 0; i < pred.PotionData.TotalCount; i++)
+                        if (pred.PotionData.Revealed[i])
+                            allRevealed.Add((i, pred.PotionData.LockedAt[i],
+                                pred.PotionData.Rarities[i] == PotionRarity.Rare));
+                    allRevealed.Sort((a, b) => a.lockedAt.CompareTo(b.lockedAt));
+                    var filtered = allRevealed.Where(r => r.rare == isRare).ToList();
+                    var revealedNames = new List<string>();
+                    foreach (var r in filtered)
+                    {
+                        int globalIdx = allRevealed.IndexOf(r);
+                        var seq = isRare ? pred.RarePotionSequence : pred.CommonPotionSequence;
+                        string name = seq != null && globalIdx < seq.Length ? seq[globalIdx].Name ?? "?" : "?";
+                        revealedNames.Add($"[{r.lockedAt}] {name}");
+                    }
+                    ModLogger.Info($"  [{colName}]: {string.Join(", ", revealedNames)}");
+                }
+                else
+                {
                 int offset = state.LockedAt;
                 var prediction = pred.Predictions[offset];
                 string predictedStr = col switch
@@ -405,6 +493,7 @@ public static class PredictEverythingPatches
                     _ => string.Join(", ", prediction.GetCards(col).Select(c => c.Upgraded ? c.Name + "+" : c.Name))
                 };
                 ModLogger.Info($"  [{colName}] offset={offset}: predicted [{predictedStr}]");
+                }
             }
             else
             {

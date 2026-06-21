@@ -36,6 +36,12 @@
     "legend_upgraded": "Green bold +name = upgraded card",
     "legend_costs": "Offset costs: Card +6 | Relic +1 | Gold +1 | Potion +1",
     "legend_order": "Same click: reveals scan L→R→T→B→TL→BL→TR→BR→center one by one; item triggers when its last cell is cleared",
-    "legend_filter": "Filter: auto-plans optimal path (fewest golds > earliest finish). Unselected card columns act as stepping stones. Relic is last resort after gold is spent. Max 7 gold."
+    "legend_filter": "Filter: auto-plans optimal path (fewest golds > earliest finish). Unselected card columns act as stepping stones. Relic is last resort after gold is spent. Max 7 gold.",
+    "col_common_potion": "Com.Potion",
+    "col_rare_potion": "Rare Potion",
+    "locked_common_potion_col": "Com.Potion",
+    "locked_rare_potion_col": "Rare Potion",
+    "plan_stone_1": "+1 offset item",
+    "plan_stone_6": "+6 offset item"
   }
 }

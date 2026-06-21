@@ -8,8 +8,8 @@ public class OffsetPrediction
     public CardPrediction[] UncommonCards { get; init; } = null!;
     public CardPrediction[] CommonCards { get; init; } = null!;
     public RelicPrediction Relic { get; init; } = null!;
-    public PotionPrediction CommonPotion { get; set; } = null!;
-    public PotionPrediction RarePotion { get; set; } = null!;
+    public PotionPrediction? CommonPotion { get; set; }
+    public PotionPrediction? RarePotion { get; set; }
 
     public CardPrediction[] GetCards(ColumnType col) => col switch
     {

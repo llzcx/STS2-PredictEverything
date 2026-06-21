@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using MegaCrit.Sts2.Core.Entities.Potions;
 
 namespace PredictEverything;
 
@@ -26,6 +27,8 @@ public partial class InfoPanel : Control
     private OptionButton _uncommonFilter = null!;
     private OptionButton _commonFilter = null!;
     private OptionButton _relicFilter = null!;
+    private OptionButton _commonPotionFilter = null!;
+    private OptionButton _rarePotionFilter = null!;
 
     private bool _collapsed;
     private bool _dragging;
@@ -46,6 +49,7 @@ public partial class InfoPanel : Control
     private static readonly Color UncommonReservedColor = new(0.10f, 0.25f, 0.45f, 0.5f);
     private static readonly Color CommonReservedColor = new(0.20f, 0.20f, 0.25f, 0.55f);
     private static readonly Color RelicReservedColor = new(0.10f, 0.38f, 0.18f, 0.5f);
+    private static readonly Color PotionReservedColor = new(0.12f, 0.30f, 0.42f, 0.5f);
     private static readonly Color MixedReservedColor = new(0.35f, 0.28f, 0.20f, 0.5f);
     private static readonly Color CurrentHighlightColor = new(1f, 1f, 1f, 0.2f);
 
@@ -59,7 +63,7 @@ public partial class InfoPanel : Control
     private static readonly Color LimeGreen = new(0.29f, 0.87f, 0.50f);
 
     private static readonly ColumnType[] Cols =
-        { ColumnType.Rare, ColumnType.Uncommon, ColumnType.Common, ColumnType.Relic };
+        { ColumnType.Rare, ColumnType.Uncommon, ColumnType.Common, ColumnType.Relic, ColumnType.CommonPotion, ColumnType.RarePotion };
 
     // I18n registry for language switching
     private readonly List<(Control control, string key)> _i18nRegistry = new();
@@ -192,6 +196,8 @@ public partial class InfoPanel : Control
                 ColumnType.Uncommon => "col_uncommon",
                 ColumnType.Common => "col_common",
                 ColumnType.Relic => "col_relic",
+                ColumnType.CommonPotion => "col_common_potion",
+                ColumnType.RarePotion => "col_rare_potion",
                 _ => ""
             };
             var headerLabel = new RichTextLabel();
@@ -218,10 +224,14 @@ public partial class InfoPanel : Control
         _uncommonFilter = BuildFilter(ColumnType.Uncommon, "col_uncommon");
         _commonFilter = BuildFilter(ColumnType.Common, "col_common");
         _relicFilter = BuildFilter(ColumnType.Relic, "col_relic");
+        _commonPotionFilter = BuildPotionFilter(PotionRarity.Common, "col_common_potion");
+        _rarePotionFilter = BuildPotionFilter(PotionRarity.Rare, "col_rare_potion");
         _filterRow.AddChild(_rareFilter);
         _filterRow.AddChild(_uncommonFilter);
         _filterRow.AddChild(_commonFilter);
         _filterRow.AddChild(_relicFilter);
+        _filterRow.AddChild(_commonPotionFilter);
+        _filterRow.AddChild(_rarePotionFilter);
         _root.AddChild(_filterRow);
 
         // Header separator
@@ -307,7 +317,7 @@ public partial class InfoPanel : Control
         _root.AddChild(_footer);
 
         // ---- Size and positioning ----
-        float w = config.PanelW > 0 ? config.PanelW : 500f;
+        float w = config.PanelW > 0 ? config.PanelW : 580f;
         float h = config.PanelH > 0 ? config.PanelH : 680f;
         float y = config.PanelY > 0 ? config.PanelY : 200f;
 
@@ -359,7 +369,7 @@ public partial class InfoPanel : Control
         }
         int currentOffset = _predictor.CurrentOffset;
 
-        for (int row = 0; row <= 26; row++)
+        for (int row = 0; row <= CrystalSpherePredictor.MaxOffset; row++)
         {
             var pred = _predictor.Predictions[row];
             if (pred == null) continue;
@@ -485,6 +495,118 @@ public partial class InfoPanel : Control
             relicLabel.MouseExited += () => HoverTooltip.Hide();
             inner.AddChild(relicLabel);
         }
+        else if (col == ColumnType.CommonPotion)
+        {
+            var seq = _predictor.CommonPotionSequence;
+            if (seq != null)
+            {
+                string? lockedName = isLockedCell ? _predictor.GetPotionLockedNameAt(row, PotionRarity.Common) : null;
+                int plannedIdx = isPlannedCell ? _predictor.GetPotionPlanIndex(row) : -1;
+                for (int i = 0; i < seq.Length; i++)
+                {
+                    var p = seq[i];
+                    string name = p?.Name ?? "?";
+                    bool isActual = isLockedCell && name == lockedName;
+                    bool isPlannedEntry = isPlannedCell && i == plannedIdx;
+                    if (isActual)
+                    {
+                        var rtl = new RichTextLabel();
+                        rtl.BbcodeEnabled = true;
+                        rtl.Text = $"[b]{name}[/b]";
+                        rtl.FitContent = true;
+                        rtl.ScrollActive = false;
+                        rtl.HorizontalAlignment = HorizontalAlignment.Center;
+                        rtl.AutowrapMode = TextServer.AutowrapMode.Word;
+                        rtl.MouseFilter = MouseFilterEnum.Pass;
+                        rtl.AddThemeColorOverride("default_color", IceBlue);
+                        rtl.AddThemeFontSizeOverride("normal_font_size", 12);
+                        rtl.AddThemeFontSizeOverride("bold_font_size", 12);
+                        inner.AddChild(rtl);
+                    }
+                    else if (isPlannedEntry)
+                    {
+                        var rtl = new RichTextLabel();
+                        rtl.BbcodeEnabled = true;
+                        rtl.Text = $"[b][color=#FFB830]{name}[/color][/b]";
+                        rtl.FitContent = true;
+                        rtl.ScrollActive = false;
+                        rtl.HorizontalAlignment = HorizontalAlignment.Center;
+                        rtl.AutowrapMode = TextServer.AutowrapMode.Word;
+                        rtl.MouseFilter = MouseFilterEnum.Pass;
+                        rtl.AddThemeFontSizeOverride("normal_font_size", 12);
+                        rtl.AddThemeFontSizeOverride("bold_font_size", 12);
+                        inner.AddChild(rtl);
+                    }
+                    else
+                    {
+                        var lbl = CreateLabel(name, 12, IceBlue);
+                        lbl.HorizontalAlignment = HorizontalAlignment.Center;
+                        lbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                        lbl.MouseFilter = MouseFilterEnum.Pass;
+                        var captured = p;
+                        lbl.MouseEntered += () => { if (captured?.Potion != null) HoverTooltip.ShowPotion(captured.Potion); };
+                        lbl.MouseExited += () => HoverTooltip.Hide();
+                        inner.AddChild(lbl);
+                    }
+                }
+            }
+        }
+        else if (col == ColumnType.RarePotion)
+        {
+            var seq = _predictor.RarePotionSequence;
+            if (seq != null)
+            {
+                string? lockedName = isLockedCell ? _predictor.GetPotionLockedNameAt(row, PotionRarity.Rare) : null;
+                int plannedIdx = isPlannedCell ? _predictor.GetPotionPlanIndex(row) : -1;
+                for (int i = 0; i < seq.Length; i++)
+                {
+                    var p = seq[i];
+                    string name = p?.Name ?? "?";
+                    bool isActual = isLockedCell && name == lockedName;
+                    bool isPlannedEntry = isPlannedCell && i == plannedIdx;
+                    if (isActual)
+                    {
+                        var rtl = new RichTextLabel();
+                        rtl.BbcodeEnabled = true;
+                        rtl.Text = $"[b]{name}[/b]";
+                        rtl.FitContent = true;
+                        rtl.ScrollActive = false;
+                        rtl.HorizontalAlignment = HorizontalAlignment.Center;
+                        rtl.AutowrapMode = TextServer.AutowrapMode.Word;
+                        rtl.MouseFilter = MouseFilterEnum.Pass;
+                        rtl.AddThemeColorOverride("default_color", IceBlue);
+                        rtl.AddThemeFontSizeOverride("normal_font_size", 12);
+                        rtl.AddThemeFontSizeOverride("bold_font_size", 12);
+                        inner.AddChild(rtl);
+                    }
+                    else if (isPlannedEntry)
+                    {
+                        var rtl = new RichTextLabel();
+                        rtl.BbcodeEnabled = true;
+                        rtl.Text = $"[b][color=#FFB830]{name}[/color][/b]";
+                        rtl.FitContent = true;
+                        rtl.ScrollActive = false;
+                        rtl.HorizontalAlignment = HorizontalAlignment.Center;
+                        rtl.AutowrapMode = TextServer.AutowrapMode.Word;
+                        rtl.MouseFilter = MouseFilterEnum.Pass;
+                        rtl.AddThemeFontSizeOverride("normal_font_size", 12);
+                        rtl.AddThemeFontSizeOverride("bold_font_size", 12);
+                        inner.AddChild(rtl);
+                    }
+                    else
+                    {
+                        var lbl = CreateLabel(name, 12, IceBlue);
+                        lbl.HorizontalAlignment = HorizontalAlignment.Center;
+                        lbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                        lbl.MouseFilter = MouseFilterEnum.Pass;
+                        var captured = p;
+                        lbl.MouseEntered += () => { if (captured?.Potion != null) HoverTooltip.ShowPotion(captured.Potion); };
+                        lbl.MouseExited += () => HoverTooltip.Hide();
+                        inner.AddChild(lbl);
+                    }
+                }
+            }
+        }
         else
         {
             var cards = pred.GetCards(col);
@@ -609,6 +731,8 @@ public partial class InfoPanel : Control
         ColumnType.Uncommon => _predictor.Uncommon.LockedAt == row,
         ColumnType.Common => _predictor.Common.LockedAt == row,
         ColumnType.Relic => _predictor.Relic.LockedAt == row,
+        ColumnType.CommonPotion => _predictor.IsCommonPotionLockedAt(row),
+        ColumnType.RarePotion => _predictor.IsRarePotionLockedAt(row),
         _ => false
     };
 
@@ -617,7 +741,9 @@ public partial class InfoPanel : Control
         return _predictor.Rare.LockedAt == row ||
                _predictor.Uncommon.LockedAt == row ||
                _predictor.Common.LockedAt == row ||
-               _predictor.Relic.LockedAt == row;
+               _predictor.Relic.LockedAt == row ||
+               _predictor.IsCommonPotionLockedAt(row) ||
+               _predictor.IsRarePotionLockedAt(row);
     }
 
     private bool IsRowPlanned(int row)
@@ -625,7 +751,9 @@ public partial class InfoPanel : Control
         return _predictor.Rare.PlannedAt == row ||
                _predictor.Uncommon.PlannedAt == row ||
                _predictor.Common.PlannedAt == row ||
-               _predictor.Relic.PlannedAt == row;
+               _predictor.Relic.PlannedAt == row ||
+               _predictor.IsCommonPotionPlannedAt(row) ||
+               _predictor.IsRarePotionPlannedAt(row);
     }
 
     private Color? GetRowReservedColor(int row)
@@ -693,6 +821,29 @@ public partial class InfoPanel : Control
         return ob;
     }
 
+    private OptionButton BuildPotionFilter(PotionRarity rarity, string labelKey)
+    {
+        var ob = new OptionButton();
+        ob.AddThemeFontSizeOverride("font_size", 12);
+        ob.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        ob.MouseFilter = MouseFilterEnum.Pass;
+        ob.AddItem($"-- {I18n.Tr(labelKey)} --", 0);
+        var p = CrystalSpherePredictor.Instance;
+        var seq = rarity == PotionRarity.Rare ? p?.RarePotionSequence : p?.CommonPotionSequence;
+        if (seq != null)
+        {
+            var seen = new System.Collections.Generic.HashSet<string>();
+            foreach (var pot in seq)
+            {
+                var name = pot?.Name;
+                if (!string.IsNullOrEmpty(name) && name != "?" && seen.Add(name))
+                    ob.AddItem(name, ob.ItemCount);
+            }
+        }
+        ob.ItemSelected += _ => OnFilterChanged();
+        return ob;
+    }
+
     private void OnFilterChanged()
     {
         if (_predictor == null || !_predictor.IsActive) return;
@@ -714,13 +865,26 @@ public partial class InfoPanel : Control
                 relT = name;
         }
 
-        var (feasible, sequence, error) = _predictor.ComputeOptimalPath(rareT, uncT, comT, relT);
+        int? commonPotT = null;
+        if (_commonPotionFilter?.Selected > 0)
+        {
+            commonPotT = _predictor.CurrentOffset;
+        }
+        int? rarePotT = null;
+        if (_rarePotionFilter?.Selected > 0)
+        {
+            rarePotT = _predictor.CurrentOffset;
+        }
+
+        var (feasible, sequence, error) = _predictor.ComputeOptimalPath(rareT, uncT, comT, relT, commonPotT, rarePotT);
         if (!feasible && error != null)
         {
-            _predictor.Rare.PlannedAt = null;
-            _predictor.Uncommon.PlannedAt = null;
-            _predictor.Common.PlannedAt = null;
-            _predictor.Relic.PlannedAt = null;
+            _predictor.Rare.PlannedOffsets.Clear();
+            _predictor.Uncommon.PlannedOffsets.Clear();
+            _predictor.Common.PlannedOffsets.Clear();
+            _predictor.Relic.PlannedOffsets.Clear();
+            _predictor.CommonPotionColumn.PlannedOffsets.Clear();
+            _predictor.RarePotionColumn.PlannedOffsets.Clear();
         }
         Refresh();
         RefreshPlanLabel();
@@ -731,7 +895,7 @@ public partial class InfoPanel : Control
                 _planLabel.Text = $"[color=#FF6B35]{error}[/color]";
             else if (!string.IsNullOrEmpty(sequence))
                 _planLabel.Text = $"[b]{I18n.Tr("plan_prefix")}[/b]: {sequence}";
-            else if (rareT == null && uncT == null && comT == null && relT == null)
+            else if (rareT == null && uncT == null && comT == null && relT == null && commonPotT == null && rarePotT == null)
                 _planLabel.Text = "";
         }
     }
@@ -823,6 +987,8 @@ public partial class InfoPanel : Control
                     ColumnType.Uncommon => "col_uncommon",
                     ColumnType.Common => "col_common",
                     ColumnType.Relic => "col_relic",
+                    ColumnType.CommonPotion => "col_common_potion",
+                    ColumnType.RarePotion => "col_rare_potion",
                     _ => ""
                 };
                 string name = I18n.Tr(key);
@@ -842,10 +1008,14 @@ public partial class InfoPanel : Control
         if (predictor != null && predictor.IsActive)
         {
             // Clear all plans
-            predictor.Rare.PlannedAt = null;
-            predictor.Uncommon.PlannedAt = null;
-            predictor.Common.PlannedAt = null;
-            predictor.Relic.PlannedAt = null;
+            predictor.Rare.PlannedOffsets.Clear();
+            predictor.Uncommon.PlannedOffsets.Clear();
+            predictor.Common.PlannedOffsets.Clear();
+            predictor.Relic.PlannedOffsets.Clear();
+            predictor.CommonPotionColumn.PlannedOffsets.Clear();
+            predictor.RarePotionColumn.PlannedOffsets.Clear();
+            _commonPotionFilter.Selected = 0;
+            _rarePotionFilter.Selected = 0;
             _predictor = predictor;
         }
         Refresh();

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using MegaCrit.Sts2.Core.Entities.Potions;
 
 namespace PredictEverything;
 
@@ -18,8 +19,6 @@ public partial class LockedDashboard : Control
     private VBoxContainer _root = null!;
     private VBoxContainer _rowsContainer = null!;
     private VBoxContainer _content = null!;
-    private VBoxContainer _potionContainer = null!;
-    private Label[] _potionLabels = null!;
     private Label _goldLabel = null!;
     private Button _collapseBtn = null!;
     private Label _progressLabel = null!;
@@ -47,6 +46,8 @@ public partial class LockedDashboard : Control
         (ColumnType.Uncommon, "locked_uncommon", UncommonColor),
         (ColumnType.Common, "locked_common", CommonColor),
         (ColumnType.Relic, "locked_relic", RelicColor),
+        (ColumnType.CommonPotion, "locked_common_potion_col", IceBlue),
+        (ColumnType.RarePotion, "locked_rare_potion_col", IceBlue),
     };
 
     // I18n registry for persistent labels updated on language switch
@@ -155,30 +156,6 @@ public partial class LockedDashboard : Control
         _rowsContainer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _content.AddChild(_rowsContainer);
 
-        // Separator before potion / gold summary
-        _content.AddChild(new HSeparator());
-
-        // Potion labels — created once, text updated in Refresh
-        _potionContainer = new VBoxContainer();
-        _potionContainer.AddThemeConstantOverride("separation", 2);
-        _potionLabels = new Label[3]; // max 3 potions
-        for (int i = 0; i < 3; i++)
-        {
-            _potionLabels[i] = CreateLabel("", 13, StarWhite);
-            _potionLabels[i].SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            _potionLabels[i].ClipContents = false;
-            _potionLabels[i].MouseFilter = MouseFilterEnum.Pass;
-            int capturedIndex = i;
-            _potionLabels[i].MouseEntered += () =>
-            {
-                var pm = _predictor.GetPotionModel(capturedIndex);
-                HoverTooltip.ShowPotion(pm);
-            };
-            _potionLabels[i].MouseExited += () => HoverTooltip.Hide();
-            _potionContainer.AddChild(_potionLabels[i]);
-        }
-        _content.AddChild(_potionContainer);
-
         // Gold row
         _goldLabel = CreateLabel("", 16, Gold);
         _content.AddChild(_goldLabel);
@@ -220,7 +197,8 @@ public partial class LockedDashboard : Control
         foreach (var (type, i18nKey, color) in Columns)
         {
             var state = GetColumnState(type);
-            bool isLocked = state.IsLocked;
+            bool isPotionCol = type == ColumnType.CommonPotion || type == ColumnType.RarePotion;
+            bool effectiveLocked = isPotionCol ? _predictor.IsColumnLocked(type) : state.IsLocked;
             string colName = I18n.Tr(i18nKey);
 
             var row = new HBoxContainer();
@@ -228,20 +206,20 @@ public partial class LockedDashboard : Control
             row.MouseFilter = MouseFilterEnum.Pass;
 
             // Dot indicator: filled when locked, hollow when not
-            string dot = isLocked ? "●" : "○";
-            float dotAlpha = isLocked ? 1f : 0.3f;
+            string dot = effectiveLocked ? "●" : "○";
+            float dotAlpha = effectiveLocked ? 1f : 0.3f;
             var dotLabel = CreateLabel(dot, 12, new Color(color.R, color.G, color.B, dotAlpha));
             dotLabel.CustomMinimumSize = new Vector2(16, 0);
             row.AddChild(dotLabel);
 
             // Column name
             var nameLabel = CreateLabel(colName, 15,
-                new Color(StarWhite.R, StarWhite.G, StarWhite.B, isLocked ? 1f : 0.35f));
+                new Color(StarWhite.R, StarWhite.G, StarWhite.B, effectiveLocked ? 1f : 0.35f));
             nameLabel.CustomMinimumSize = new Vector2(50, 0);
             row.AddChild(nameLabel);
 
-            // Reward name or "(not yet)" placeholder
-            if (isLocked)
+            // Reward name / revealed potion names / "(not yet)" placeholder
+            if (effectiveLocked)
             {
                 int offset = state.LockedAt;
                 var pred = _predictor.Predictions[offset];
@@ -277,6 +255,18 @@ public partial class LockedDashboard : Control
                     row.AddChild(rtl);
                 }
             }
+            else if (isPotionCol)
+            {
+                // Show revealed potion names from frozen sequences (no timing dependency)
+                PotionRarity filterRarity = type == ColumnType.RarePotion ? PotionRarity.Rare : PotionRarity.Common;
+                var names = _predictor.GetPotionRevealedNames(filterRarity);
+                var lbl = CreateLabel(names.Count > 0 ? string.Join(", ", names) : I18n.Tr("locked_not_yet"), 15,
+                    new Color(StarWhite.R, StarWhite.G, StarWhite.B, names.Count > 0 ? 0.6f : 0.3f));
+                lbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                lbl.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                lbl.ClipContents = true;
+                row.AddChild(lbl);
+            }
             else
             {
                 var lbl = CreateLabel(I18n.Tr("locked_not_yet"), 15,
@@ -290,28 +280,13 @@ public partial class LockedDashboard : Control
             _rowsContainer.AddChild(row);
         }
 
-        // Refresh potion list — use IsPotionRevealed for accurate per-potion tracking
-        int total = _predictor.TotalPotionCount;
-        for (int i = 0; i < _potionLabels.Length; i++)
-        {
-            if (i < total)
-            {
-                var name = _predictor.GetPotionName(i) ?? "?";
-                bool r = _predictor.IsPotionRevealed(i);
-                _potionLabels[i].Text = $"{(r ? "●" : "○")} {name}";
-                _potionLabels[i].Modulate = r ? Colors.White : new Color(1, 1, 1, 0.35f);
-                _potionLabels[i].Visible = true;
-            }
-            else
-            {
-                _potionLabels[i].Visible = false;
-            }
-        }
-
-        // Refresh progress summary
+        // Refresh progress summary (potion columns never count toward "locked" since infinite supply)
         int lockedCols = 0;
         foreach (var (type, _, _) in Columns)
+        {
+            if (type == ColumnType.CommonPotion || type == ColumnType.RarePotion) continue;
             if (GetColumnState(type).IsLocked) lockedCols++;
+        }
         int revealedPotions = 0;
         for (int i = 0; i < _predictor.TotalPotionCount; i++)
             if (_predictor.IsPotionRevealed(i)) revealedPotions++;
@@ -330,6 +305,8 @@ public partial class LockedDashboard : Control
         ColumnType.Uncommon => _predictor.Uncommon,
         ColumnType.Common => _predictor.Common,
         ColumnType.Relic => _predictor.Relic,
+        ColumnType.CommonPotion => _predictor.CommonPotionColumn,
+        ColumnType.RarePotion => _predictor.RarePotionColumn,
         _ => throw new ArgumentOutOfRangeException(nameof(col)),
     };
 
