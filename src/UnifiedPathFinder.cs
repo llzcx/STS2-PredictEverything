@@ -160,11 +160,9 @@ public static partial class UnifiedPathFinder
     {
         const int inf = int.MaxValue / 2;
         var dp = new int[gap + 1];
-        var dpTrace = new (int prevOff, int stoneIdx)[gap + 1];
         for (int i = 0; i <= gap; i++) dp[i] = inf;
 
         dp[0] = 0;
-        dpTrace[0] = (-1, -1);
 
         // Stones (0-1 knapsack for exact offset) — only real board items
         for (int si = 0; si < pool.Count; si++)
@@ -181,10 +179,7 @@ public static partial class UnifiedPathFinder
                 if (dp[i] == inf) continue;
                 int nc = dp[i] + c;
                 if (nc < dp[i + b])
-                {
                     dp[i + b] = nc;
-                    dpTrace[i + b] = (i, si);
-                }
             }
         }
 
@@ -192,13 +187,29 @@ public static partial class UnifiedPathFinder
         if (dp[gap] == inf || dp[gap] > maxGold)
             return (null, new List<int>(), 0);
 
-        // Backtrack stone indices
+        // Reconstruct stone set: find unused stones that satisfy dp[off - b] + c == dp[off].
+        // Avoids dpTrace aliasing where same-cost stones can appear multiple times.
+        var used = new bool[pool.Count];
         var indices = new List<int>();
         int off = gap;
-        while (off > 0 && dpTrace[off].stoneIdx >= 0)
+        while (off > 0)
         {
-            indices.Add(dpTrace[off].stoneIdx);
-            off = dpTrace[off].prevOff;
+            bool found = false;
+            for (int si = 0; si < pool.Count; si++)
+            {
+                if (consumed[si] || used[si]) continue;
+                int b = pool[si].RngBenefit;
+                int c = pool[si].GridCost;
+                if (b > 0 && off >= b && dp[off - b] + c == dp[off])
+                {
+                    used[si] = true;
+                    indices.Add(si);
+                    off -= b;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) break; // should not happen if dp[gap] is valid
         }
         indices.Reverse();
 

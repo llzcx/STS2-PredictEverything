@@ -329,11 +329,11 @@ public class CrystalSpherePredictor
         PlanChanged?.Invoke();
     }
 
-    public (bool feasible, string sequence, string? error) ComputePlan()
+    public (bool feasible, string sequence, string? error, int stepCount) ComputePlan()
     {
         // Minigame over — all divination clicks exhausted
         if (_minigame != null && _minigame.DivinationCount == 0)
-            return (true, I18n.Tr("plan_all_resolved"), null);
+            return (true, I18n.Tr("plan_all_resolved"), null, 0);
 
         var allColumns = new (ColumnType type, ColumnState state)[] {
             (ColumnType.Rare, Rare), (ColumnType.Uncommon, Uncommon),
@@ -351,13 +351,13 @@ public class CrystalSpherePredictor
         {
             if (PredictEverythingConfig.Instance.VerboseLogging)
                 ModLogger.Info($"╔══ MANUAL PLAN ────────────────────────────────────────────");
-            return (true, "", null);
+            return (true, "", null, 0);
         }
 
         var unresolved = pending.Where(x => !x.resolved)
             .OrderBy(x => x.offset).ToList();
 
-        if (unresolved.Count == 0) return (true, I18n.Tr("plan_all_resolved"), null);
+        if (unresolved.Count == 0) return (true, I18n.Tr("plan_all_resolved"), null, 0);
 
         var swPlan = Stopwatch.StartNew();
         if (PredictEverythingConfig.Instance.VerboseLogging)
@@ -407,12 +407,31 @@ public class CrystalSpherePredictor
         var plannedTypes = new HashSet<ColumnType>(pending.Select(x => x.col));
         var stones = BuildGridStonePool(plannedTypes);
 
-        var (rawPath, goldCells) = UnifiedPathFinder.FindPath(gridTargets, stones, CardPredictionOffset);
+        // Quick pre-filter: total gap must not exceed available stone benefit
+        var fixedTargets = gridTargets.Where(t => t.TargetOffset.HasValue)
+            .OrderBy(t => t.TargetOffset!.Value).ToList();
+        if (fixedTargets.Count > 0)
+        {
+            int maxFill = stones.Sum(s => s.RngBenefit);
+            int totalGap = fixedTargets[0].TargetOffset!.Value - CardPredictionOffset;
+            for (int i = 1; i < fixedTargets.Count; i++)
+                totalGap += fixedTargets[i].TargetOffset!.Value
+                    - (fixedTargets[i - 1].TargetOffset!.Value + fixedTargets[i - 1].Benefit);
+            if (totalGap > maxFill)
+            {
+                if (PredictEverythingConfig.Instance.VerboseLogging)
+                    ModLogger.Info($"  Plan: INFEASIBLE — total gap {totalGap} > available benefit {maxFill}");
+                return (false, "", string.Format(I18n.Tr("error_no_path"), CardPredictionOffset), 0);
+            }
+        }
+
+        var (rawPath, goldCells) = UnifiedPathFinder.FindPath(gridTargets, stones, CardPredictionOffset,
+            maxGoldCells: stones.Sum(s => s.GridCost)); // all remaining items are available
         if (rawPath == null)
         {
             if (PredictEverythingConfig.Instance.VerboseLogging)
                 ModLogger.Info($"  Plan ({swPlan.Elapsed.TotalMilliseconds:F1}ms): INFEASIBLE — grid DP found no path from offset {CardPredictionOffset}");
-            return (false, "", string.Format(I18n.Tr("error_no_path"), CardPredictionOffset));
+            return (false, "", string.Format(I18n.Tr("error_no_path"), CardPredictionOffset), 0);
         }
 
         int cur = CardPredictionOffset;
@@ -460,7 +479,7 @@ public class CrystalSpherePredictor
         var sequence = string.Join(" → ", steps);
         if (PredictEverythingConfig.Instance.VerboseLogging)
             ModLogger.Info($"  Plan ({swPlan.Elapsed.TotalMilliseconds:F1}ms): {sequence} (goldCells={goldCells} offset: {CardPredictionOffset}→{cur})");
-        return (true, sequence, null);
+        return (true, sequence, null, steps.Count);
     }
 
     public void Reset()
@@ -1162,6 +1181,14 @@ public class CrystalSpherePredictor
             pool.Add(GridItem.FromItem(item, colType, benefit, false));
         }
 
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+        {
+            var byLabel = pool.GroupBy(s => s.DisplayLabel)
+                .Select(g => $"{g.Key}:{g.Count()}")
+                .ToList();
+            ModLogger.Info($"  Stone pool: {pool.Count} items [{string.Join(", ", byLabel)}] totalBenefit={pool.Sum(s => s.RngBenefit)} totalCells={pool.Sum(s => s.GridCost)}");
+        }
+
         return pool;
     }
 
@@ -1353,7 +1380,8 @@ public class CrystalSpherePredictor
                 ModLogger.Info($"    Try #{attempts}: [{tc}]");
             }
 
-            var (path, goldCells) = UnifiedPathFinder.FindPath(targets, gridStones, CardPredictionOffset, 9);
+            var (path, goldCells) = UnifiedPathFinder.FindPath(targets, gridStones, CardPredictionOffset,
+                maxGoldCells: gridStones.Sum(s => s.GridCost));
             if (path == null)
             {
                 if (PredictEverythingConfig.Instance.VerboseLogging)

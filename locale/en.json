@@ -44,6 +44,7 @@
     "legend_order": "Same click: L→R→T→B→TL→BL→TR→BR→center; item triggers when last cell clears (hover for preview)",
     "legend_filter": "Path: DP min grid cost. Prefers small golds (1 cell=1 offset). Potion selection auto-expands prerequisites (#3→#1→#2). Candidate offsets tried nearest-first.",
     "legend_substitute": "Same-offset items are interchangeable: gold/potions/relics = +1, cards = +6. Swap freely during play.",
+    "plan_long_warning": "Many steps — verify path feasibility carefully!",
     "col_common_potion": "Com.Potion",
     "col_rare_potion": "Rare Potion",
     "locked_common_potion_col": "Com.Potion",

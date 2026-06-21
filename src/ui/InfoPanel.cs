@@ -747,7 +747,7 @@ public partial class InfoPanel : Control
     {
         if (_planLabel == null || _predictor == null || !_predictor.IsActive) return;
 
-        var (feasible, sequence, error) = _predictor.ComputePlan();
+        var (feasible, sequence, error, stepCount) = _predictor.ComputePlan();
 
         if (!feasible && error != null)
         {
@@ -763,7 +763,10 @@ public partial class InfoPanel : Control
         }
         else
         {
-            _planLabel.Text = sequence;
+            if (stepCount > 8)
+                _planLabel.Text = $"[color=#FFB830]{sequence}  — {I18n.Tr("plan_long_warning")}[/color]";
+            else
+                _planLabel.Text = sequence;
         }
     }
 

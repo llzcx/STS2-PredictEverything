@@ -33,7 +33,7 @@ public class GridItem
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(g)) == true)
                     ? "大金币" : "小金币",
             CrystalSpherePotion => colType == ColumnType.RarePotion ? "金药水" : "白药水",
-            CrystalSphereCardReward => "卡牌",
+            CrystalSphereCardReward => "任意卡牌",
             CrystalSphereRelic => "遗物",
             CrystalSphereCurse => "诅咒",
             _ => ""
