@@ -412,6 +412,33 @@ public partial class LockedDashboard : Control
 
             _inventoryContainer.AddChild(row);
         }
+
+        // Summary rows: Σ (remaining × RngBenefit), by benefit group
+        int totalBenefit = inv.Sum(e => e.Remaining * e.RngBenefit);
+        int benefit1 = inv.Where(e => e.RngBenefit == 1).Sum(e => e.Remaining * e.RngBenefit);
+        int benefit6 = inv.Where(e => e.RngBenefit == 6).Sum(e => e.Remaining * e.RngBenefit);
+        _inventoryContainer.AddChild(new HSeparator());
+
+        void AddSumRow(string labelKey, int value, Color valueColor)
+        {
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 6);
+            var lbl = CreateLabel(I18n.Tr(labelKey), 12,
+                new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.7f));
+            lbl.CustomMinimumSize = new Vector2(130, 0);
+            row.AddChild(lbl);
+            row.AddChild(new Control { CustomMinimumSize = new Vector2(36, 0) });
+            row.AddChild(new Control { CustomMinimumSize = new Vector2(32, 0) });
+            var val = CreateLabel($"+{value}", 13, valueColor);
+            val.HorizontalAlignment = HorizontalAlignment.Center;
+            val.CustomMinimumSize = new Vector2(28, 0);
+            row.AddChild(val);
+            _inventoryContainer.AddChild(row);
+        }
+
+        AddSumRow("inventory_total_benefit", totalBenefit, new Color(0.29f, 0.87f, 0.50f));
+        AddSumRow("inventory_benefit_1", benefit1, IceBlue);
+        AddSumRow("inventory_benefit_6", benefit6, LimeGreen);
     }
 
     private ColumnState GetColumnState(ColumnType col) => col switch

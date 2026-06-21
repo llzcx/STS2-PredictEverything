@@ -49,7 +49,8 @@
     "col_rare_potion": "Rare Potion",
     "locked_common_potion_col": "Com.Potion",
     "locked_rare_potion_col": "Rare Potion",
-    "plan_stone_1": "+1 offset item",
-    "plan_stone_6": "+6 offset item"
+    "inventory_total_benefit": "Total remaining offset",
+    "inventory_benefit_1": "Remaining +1 offset",
+    "inventory_benefit_6": "Remaining +6 offset"
   }
 }

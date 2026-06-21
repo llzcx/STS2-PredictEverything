@@ -1068,19 +1068,19 @@ public class CrystalSpherePredictor
             }
             totals[key]++;
 
-            // Check revealed
-            bool revealed = false;
-            for (int x = 0; x < item.Size.X && !revealed; x++)
-                for (int y = 0; y < item.Size.Y && !revealed; y++)
+            // Check if ALL cells are revealed — item only consumed when fully uncovered
+            bool allRevealed = true;
+            for (int x = 0; x < item.Size.X && allRevealed; x++)
+                for (int y = 0; y < item.Size.Y && allRevealed; y++)
                 {
                     int px = item.Position.X + x;
                     int py = item.Position.Y + y;
                     if (px >= 0 && px < _minigame.GridSize.X
                         && py >= 0 && py < _minigame.GridSize.Y
-                        && !_minigame.cells[px, py].IsHidden)
-                        revealed = true;
+                        && _minigame.cells[px, py].IsHidden)
+                        allRevealed = false;
                 }
-            if (!revealed) remainings[key]++;
+            if (!allRevealed) remainings[key]++;
         }
 
         foreach (var key in order)
