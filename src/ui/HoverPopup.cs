@@ -259,120 +259,208 @@ public partial class HoverPopup : Control
     // ============= Click preview algorithm =============
 
     /// <summary>
-    /// Compute what items would be revealed by clicking cell (hx, hy).
-    /// Accounts for tool type (Big=3x3 area, Small=1 cell), multi-cell
-    /// item occupancy, already-revealed cells, and current RNG offset.
+    /// Simulate the game's actual ClearCell loop to determine which items
+    /// would be revealed and in what order. Each cell in the tool area is
+    /// "cleared" in the fixed GetAdjacentCells traversal order. When a
+    /// cell's item has all its occupied cells covered (already revealed in
+    /// game OR cleared by this click), the item is added to the reveal list.
     /// </summary>
     private List<PreviewEntry> ComputeClickPreview(int hx, int hy)
     {
         var entries = new List<PreviewEntry>();
-        if (_minigame == null) return entries;
+        if (_minigame == null || _predictor == null || !_predictor.IsActive) return entries;
 
         var cell = _minigame.cells[hx, hy];
-        if (!cell.IsHidden) return entries; // already revealed
+        if (!cell.IsHidden) return entries;
 
-        var item = cell.Item;
-        if (item == null) return entries; // fog / empty
+        // 1. Build the ordered list of cells this click would clear
+        List<(int x, int y)> clearOrder;
+        if (_minigame.CrystalSphereTool == CrystalSphereMinigame.CrystalSphereToolType.Big)
+            clearOrder = GetAdjacentCellsOrdered(hx, hy, _minigame.GridSize.X, _minigame.GridSize.Y);
+        else
+            clearOrder = new List<(int, int)> { (hx, hy) };
 
-        switch (item)
+        // 2. Simulate ClearCell for each cell in traversal order.
+        //    Track which cells this click clears + which items become fully revealed.
+        var clearedThisClick = new HashSet<(int, int)>();
+        var processedItems = new HashSet<CrystalSphereItem>();
+        var orderedItems = new List<CrystalSphereItem>();
+
+        foreach (var (cx, cy) in clearOrder)
         {
-            case CrystalSphereGold gold:
+            if (cx < 0 || cx >= _minigame.GridSize.X || cy < 0 || cy >= _minigame.GridSize.Y)
+                continue;
+
+            var gc = _minigame.cells[cx, cy];
+            if (!gc.IsHidden) continue; // already revealed in game — skip
+
+            clearedThisClick.Add((cx, cy));
+
+            if (gc.Item != null && !processedItems.Contains(gc.Item)
+                && AreAllCellsCleared(gc.Item, clearedThisClick))
             {
-                bool isBig = (bool)(_isBigField?.GetValue(gold) ?? false);
-                entries.Add(new PreviewEntry
-                {
-                    TypeLabel = isBig ? I18n.Tr("gold_big_label") : I18n.Tr("gold_small_label"),
-                    Content = "",
-                    TypeColor = Gold,
-                });
-                break;
+                processedItems.Add(gc.Item);
+                orderedItems.Add(gc.Item);
             }
+        }
 
-            case CrystalSpherePotion potion:
+        if (orderedItems.Count == 0) return entries;
+
+        // 3. Count total new potions — Phase 1 ToReward consumes ALL of them
+        //    before any Phase 2 Populate, regardless of reveal order position.
+        int newPotionTotal = orderedItems.OfType<CrystalSpherePotion>().Count();
+
+        // 4. Build preview entries in reveal order
+        int potionSeqIdx = _predictor.RevealedPotionCount; // for frozen potion sequence
+        int phase2Offset = _predictor.CardPredictionOffset + newPotionTotal;
+        // Phase 1 advances RNG by newPotionTotal; Phase 2 starts from there.
+
+        foreach (var item in orderedItems)
+        {
+            switch (item)
             {
-                var rarity = (PotionRarity?)(_potionRarityField?.GetValue(potion)) ?? PotionRarity.Common;
-                bool isRare = rarity == PotionRarity.Rare;
-                int sequenceIdx = _predictor.RevealedPotionCount;
-                var seq = isRare ? _predictor.RarePotionSequence : _predictor.CommonPotionSequence;
-                string potionName = seq != null && sequenceIdx < seq.Length
-                    ? (seq[sequenceIdx].Name ?? "?") : "?";
-                entries.Add(new PreviewEntry
+                case CrystalSphereGold gold:
                 {
-                    TypeLabel = isRare ? I18n.Tr("col_rare_potion") : I18n.Tr("col_common_potion"),
-                    Content = potionName,
-                    TypeColor = IceBlue,
-                });
-                break;
-            }
+                    bool isBig = (bool)(_isBigField?.GetValue(gold) ?? false);
+                    entries.Add(new PreviewEntry
+                    {
+                        TypeLabel = isBig ? I18n.Tr("gold_big_label") : I18n.Tr("gold_small_label"),
+                        Content = "",
+                        TypeColor = Gold,
+                    });
+                    phase2Offset += 1; // gold Populate consumes 1 RNG
+                    break;
+                }
 
-            case CrystalSphereRelic:
-            {
-                int offset = _predictor.CurrentOffset;
-                var pred = _predictor.GetPrediction(offset);
-                string relicName = pred?.Relic?.Name ?? "?";
-                entries.Add(new PreviewEntry
+                case CrystalSpherePotion potion:
                 {
-                    TypeLabel = I18n.Tr("col_relic"),
-                    Content = relicName,
-                    TypeColor = LimeGreen,
-                });
-                break;
-            }
+                    var rarity = (PotionRarity?)(_potionRarityField?.GetValue(potion)) ?? PotionRarity.Common;
+                    bool isRare = rarity == PotionRarity.Rare;
+                    var seq = isRare ? _predictor.RarePotionSequence : _predictor.CommonPotionSequence;
+                    string potionName = seq != null && potionSeqIdx < seq.Length
+                        ? (seq[potionSeqIdx].Name ?? "?") : "?";
+                    entries.Add(new PreviewEntry
+                    {
+                        TypeLabel = isRare ? I18n.Tr("col_rare_potion") : I18n.Tr("col_common_potion"),
+                        Content = potionName,
+                        TypeColor = IceBlue,
+                    });
+                    potionSeqIdx++;
+                    break;
+                }
 
-            case CrystalSphereCardReward cardReward:
-            {
-                var rarity = (CardRarity?)(_rarityField?.GetValue(cardReward)) ?? CardRarity.Common;
-                var colType = rarity switch
+                case CrystalSphereRelic:
                 {
-                    CardRarity.Rare => ColumnType.Rare,
-                    CardRarity.Uncommon => ColumnType.Uncommon,
-                    _ => ColumnType.Common,
-                };
-                string colLabel = colType switch
-                {
-                    ColumnType.Rare => I18n.Tr("col_rare"),
-                    ColumnType.Uncommon => I18n.Tr("col_uncommon"),
-                    _ => I18n.Tr("col_common"),
-                };
-                Color colColor = colType switch
-                {
-                    ColumnType.Rare => WarmOrange,
-                    ColumnType.Uncommon => IceBlue,
-                    _ => StarWhite,
-                };
+                    var pred = _predictor.GetPrediction(phase2Offset);
+                    string relicName = pred?.Relic?.Name ?? "?";
+                    entries.Add(new PreviewEntry
+                    {
+                        TypeLabel = I18n.Tr("col_relic"),
+                        Content = relicName,
+                        TypeColor = LimeGreen,
+                    });
+                    phase2Offset += 1;
+                    break;
+                }
 
-                int offset = _predictor.CurrentOffset;
-                var pred = _predictor.GetPrediction(offset);
-                var cards = pred?.GetCards(colType);
-                var cardNames = cards?.Select(c =>
+                case CrystalSphereCardReward cardReward:
                 {
-                    string n = c.Name ?? "?";
-                    if (c.Upgraded && !n.EndsWith("+")) n += "+";
-                    return n;
-                }).ToArray() ?? new[] { "?" };
+                    var rarity = (CardRarity?)(_rarityField?.GetValue(cardReward)) ?? CardRarity.Common;
+                    var colType = rarity switch
+                    {
+                        CardRarity.Rare => ColumnType.Rare,
+                        CardRarity.Uncommon => ColumnType.Uncommon,
+                        _ => ColumnType.Common,
+                    };
+                    string colLabel = colType switch
+                    {
+                        ColumnType.Rare => I18n.Tr("col_rare"),
+                        ColumnType.Uncommon => I18n.Tr("col_uncommon"),
+                        _ => I18n.Tr("col_common"),
+                    };
+                    Color colColor = colType switch
+                    {
+                        ColumnType.Rare => WarmOrange,
+                        ColumnType.Uncommon => IceBlue,
+                        _ => StarWhite,
+                    };
+                    var pred = _predictor.GetPrediction(phase2Offset);
+                    var cards = pred?.GetCards(colType);
+                    var cardNames = cards?.Select(c =>
+                    {
+                        string n = c.Name ?? "?";
+                        if (c.Upgraded && !n.EndsWith("+")) n += "+";
+                        return n;
+                    }).ToArray() ?? new[] { "?" };
+                    entries.Add(new PreviewEntry
+                    {
+                        TypeLabel = colLabel,
+                        Content = string.Join(", ", cardNames),
+                        TypeColor = colColor,
+                    });
+                    phase2Offset += 6;
+                    break;
+                }
 
-                entries.Add(new PreviewEntry
+                case CrystalSphereCurse:
                 {
-                    TypeLabel = colLabel,
-                    Content = string.Join(", ", cardNames),
-                    TypeColor = colColor,
-                });
-                break;
-            }
-
-            case CrystalSphereCurse:
-            {
-                entries.Add(new PreviewEntry
-                {
-                    TypeLabel = I18n.Tr("curse_label"),
-                    Content = "",
-                    TypeColor = DangerRed,
-                });
-                break;
+                    entries.Add(new PreviewEntry
+                    {
+                        TypeLabel = I18n.Tr("curse_label"),
+                        Content = "",
+                        TypeColor = DangerRed,
+                    });
+                    break;
+                }
             }
         }
 
         return entries;
+    }
+
+    /// <summary>
+    /// Check whether every cell occupied by <paramref name="item"/> is either
+    /// already revealed in the game, or covered by <paramref name="clearedThisClick"/>.
+    /// Mirrors the game's AreAllOccupiedCellsClear logic.
+    /// </summary>
+    private bool AreAllCellsCleared(CrystalSphereItem item, HashSet<(int, int)> clearedThisClick)
+    {
+        for (int i = 0; i < item.Size.X; i++)
+        {
+            for (int j = 0; j < item.Size.Y; j++)
+            {
+                int px = item.Position.X + i;
+                int py = item.Position.Y + j;
+                if (px < 0 || px >= _minigame.GridSize.X) return false;
+                if (py < 0 || py >= _minigame.GridSize.Y) return false;
+                if (!_minigame.cells[px, py].IsHidden) continue; // already revealed
+                if (clearedThisClick.Contains((px, py))) continue; // cleared this click
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Get 3x3 adjacent cells in the exact game order:
+    /// horizontal → vertical → diagonal → center.
+    /// </summary>
+    private static List<(int x, int y)> GetAdjacentCellsOrdered(int x, int y, int gridW, int gridH)
+    {
+        var cells = new List<(int, int)>();
+        // Horizontal (left, right)
+        for (int dx = -1; dx <= 1; dx += 2)
+        { int nx = x + dx; if (nx >= 0 && nx < gridW) cells.Add((nx, y)); }
+        // Vertical (up, down)
+        for (int dy = -1; dy <= 1; dy += 2)
+        { int ny = y + dy; if (ny >= 0 && ny < gridH) cells.Add((x, ny)); }
+        // Diagonal (top-left, bottom-left, top-right, bottom-right)
+        for (int dx = -1; dx <= 1; dx += 2)
+            for (int dy = -1; dy <= 1; dy += 2)
+            { int nx = x + dx; int ny = y + dy; if (nx >= 0 && nx < gridW && ny >= 0 && ny < gridH) cells.Add((nx, ny)); }
+        // Center
+        cells.Add((x, y));
+        return cells;
     }
 
     // ============= I18n =============
