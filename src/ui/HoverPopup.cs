@@ -59,7 +59,7 @@ public partial class HoverPopup : Control
         .GetField("_rarity", BindingFlags.NonPublic | BindingFlags.Instance);
 
 
-    private const float MinPopupW = 260f;
+    private const float MinPopupW = 280f;
 
     // ============= Public API =============
 
@@ -220,10 +220,17 @@ public partial class HoverPopup : Control
             return;
         }
 
-        foreach (var entry in entries)
+        for (int i = 0; i < entries.Count; i++)
         {
+            var entry = entries[i];
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", 6);
+
+            // Reveal order index
+            var idxLabel = CreateLabel($"{i + 1}.", 11,
+                new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.4f));
+            idxLabel.CustomMinimumSize = new Vector2(18, 0);
+            row.AddChild(idxLabel);
 
             var typeLabel = CreateLabel(entry.TypeLabel, 11, entry.TypeColor);
             typeLabel.CustomMinimumSize = new Vector2(52, 0);

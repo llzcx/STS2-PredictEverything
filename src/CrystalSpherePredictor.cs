@@ -861,6 +861,114 @@ public class CrystalSpherePredictor
         return (true, string.Join(" -> ", steps), null);
     }
 
+    // =============== Grid inventory ===============
+
+    /// <summary>
+    /// Scan all items on the CrystalSphere grid and return inventory summary:
+    /// item type label, total count, remaining (unrevealed), grid size, RNG benefit.
+    /// </summary>
+    public List<GridInventoryEntry> GetGridInventory()
+    {
+        var result = new List<GridInventoryEntry>();
+        if (_minigame == null) return result;
+
+        // Aggregate: (label, size, benefit) → count
+        var totals = new Dictionary<(string label, string size, int benefit), int>();
+        var remainings = new Dictionary<(string label, string size, int benefit), int>();
+        // Ordered by benefit desc then size asc
+        var order = new List<(string label, string size, int benefit)>();
+
+        foreach (var item in _minigame.Items)
+        {
+            string label;
+            int benefit;
+            switch (item)
+            {
+                case CrystalSphereGold gold:
+                    bool isBig = (bool?)_isBigField?.GetValue(gold) == true;
+                    label = isBig ? I18n.Tr("gold_big_label") : I18n.Tr("gold_small_label");
+                    benefit = 1;
+                    break;
+                case CrystalSpherePotion potion:
+                    var r = (PotionRarity?)_potionRarityField?.GetValue(potion) ?? PotionRarity.Common;
+                    label = r == PotionRarity.Rare ? I18n.Tr("col_rare_potion") : I18n.Tr("col_common_potion");
+                    benefit = 1;
+                    break;
+                case CrystalSphereCardReward card:
+                    var rarity = (CardRarity?)_rarityField?.GetValue(card) ?? CardRarity.Common;
+                    label = rarity switch
+                    {
+                        CardRarity.Rare => I18n.Tr("col_rare"),
+                        CardRarity.Uncommon => I18n.Tr("col_uncommon"),
+                        _ => I18n.Tr("col_common")
+                    };
+                    benefit = 6;
+                    break;
+                case CrystalSphereRelic:
+                    label = I18n.Tr("col_relic");
+                    benefit = 1;
+                    break;
+                case CrystalSphereCurse:
+                    label = I18n.Tr("curse_label");
+                    benefit = 0;
+                    break;
+                default: continue;
+            }
+            string size = $"{item.Size.X}×{item.Size.Y}";
+            var key = (label, size, benefit);
+
+            if (!totals.ContainsKey(key))
+            {
+                totals[key] = 0;
+                remainings[key] = 0;
+                order.Add(key);
+            }
+            totals[key]++;
+
+            // Check revealed
+            bool revealed = false;
+            for (int x = 0; x < item.Size.X && !revealed; x++)
+                for (int y = 0; y < item.Size.Y && !revealed; y++)
+                {
+                    int px = item.Position.X + x;
+                    int py = item.Position.Y + y;
+                    if (px >= 0 && px < _minigame.GridSize.X
+                        && py >= 0 && py < _minigame.GridSize.Y
+                        && !_minigame.cells[px, py].IsHidden)
+                        revealed = true;
+                }
+            if (!revealed) remainings[key]++;
+        }
+
+        foreach (var key in order)
+        {
+            var label = key.label;
+            Color labelColor = label switch
+            {
+                _ when label == I18n.Tr("col_rare") => new Color(1f, 0.42f, 0.21f),
+                _ when label == I18n.Tr("col_uncommon") => new Color(0.30f, 0.65f, 1f),
+                _ when label == I18n.Tr("col_common") => new Color(0.784f, 0.816f, 0.878f),
+                _ when label == I18n.Tr("col_relic") => new Color(0.29f, 0.87f, 0.50f),
+                _ when label == I18n.Tr("col_common_potion") => new Color(0.30f, 0.65f, 1f),
+                _ when label == I18n.Tr("col_rare_potion") => new Color(0.30f, 0.65f, 1f),
+                _ when label == I18n.Tr("curse_label") => new Color(1f, 0.28f, 0.28f),
+                _ when label == I18n.Tr("gold_small_label") => new Color(0.722f, 0.588f, 0.290f),
+                _ when label == I18n.Tr("gold_big_label") => new Color(0.722f, 0.588f, 0.290f),
+                _ => new Color(0.784f, 0.816f, 0.878f),
+            };
+            result.Add(new GridInventoryEntry
+            {
+                Label = label,
+                Total = totals[key],
+                Remaining = remainings[key],
+                CellSize = key.size,
+                RngBenefit = key.benefit,
+                LabelColor = labelColor,
+            });
+        }
+        return result;
+    }
+
     // =============== Stone pool ===============
 
     /// <summary>

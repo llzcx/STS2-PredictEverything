@@ -22,11 +22,13 @@ public partial class LockedDashboard : Control
     private Label _goldLabel = null!;
     private Button _collapseBtn = null!;
     private Label _progressLabel = null!;
+    private Label _inventoryTitle = null!;
+    private VBoxContainer _inventoryContainer = null!;
     private bool _collapsed;
     private float _fullHeight;
 
     // Panel palette (matches InfoPanel)
-    private static readonly Color DeepSpaceBg = new(0.043f, 0.055f, 0.102f, 0.92f);
+    private static readonly Color DeepSpaceBg = new(0.02f, 0.03f, 0.06f, 0.96f);
     private static readonly Color PanelBorder = new(0.118f, 0.141f, 0.200f, 1f);
     private static readonly Color StarWhite = new(0.784f, 0.816f, 0.878f);
     private static readonly Color Gold = new(0.722f, 0.588f, 0.290f);
@@ -156,13 +158,45 @@ public partial class LockedDashboard : Control
         _rowsContainer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _content.AddChild(_rowsContainer);
 
-        // Gold row
+        // Gold row — hidden, replaced by inventory
         _goldLabel = CreateLabel("", 16, Gold);
+        _goldLabel.Visible = false;
         _content.AddChild(_goldLabel);
+
+        // Grid inventory section (shows below column rows)
+        _content.AddChild(new HSeparator());
+        _inventoryTitle = CreateLabel(I18n.Tr("inventory_title"), 12, new Color(0.6f, 0.6f, 0.6f));
+        _inventoryTitle.AddThemeFontSizeOverride("font_size", 14);
+        _content.AddChild(_inventoryTitle);
+
+        // Inventory header row
+        var invHeader = new HBoxContainer();
+        invHeader.AddThemeConstantOverride("separation", 6);
+        var nameHeaderLabel = CreateLabel("", 11, StarWhite);
+        nameHeaderLabel.CustomMinimumSize = new Vector2(80, 0);
+        invHeader.AddChild(nameHeaderLabel);
+        var hRemain = CreateLabel("剩余", 10, new Color(0.5f, 0.5f, 0.5f));
+        hRemain.CustomMinimumSize = new Vector2(36, 0);
+        hRemain.HorizontalAlignment = HorizontalAlignment.Center;
+        invHeader.AddChild(hRemain);
+        var hSize = CreateLabel("格子", 10, new Color(0.5f, 0.5f, 0.5f));
+        hSize.CustomMinimumSize = new Vector2(32, 0);
+        hSize.HorizontalAlignment = HorizontalAlignment.Center;
+        invHeader.AddChild(hSize);
+        var hOff = CreateLabel("偏移", 10, new Color(0.5f, 0.5f, 0.5f));
+        hOff.CustomMinimumSize = new Vector2(28, 0);
+        hOff.HorizontalAlignment = HorizontalAlignment.Center;
+        invHeader.AddChild(hOff);
+        _content.AddChild(invHeader);
+
+        _inventoryContainer = new VBoxContainer();
+        _inventoryContainer.AddThemeConstantOverride("separation", 2);
+        _inventoryContainer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _content.AddChild(_inventoryContainer);
 
         // ---- Size and positioning (right side) ----
         float w = 320f;
-        float h = 380f;
+        float h = 550f;
         SetAnchorsPreset(LayoutPreset.TopRight);
         OffsetLeft = -w - 20;
         OffsetRight = -20;
@@ -218,14 +252,25 @@ public partial class LockedDashboard : Control
             nameLabel.CustomMinimumSize = new Vector2(50, 0);
             row.AddChild(nameLabel);
 
-            // Reward name / revealed potion names / "(not yet)" placeholder
-            if (effectiveLocked)
+            // Reward name
+            if (isPotionCol)
+            {
+                PotionRarity filterRarity = type == ColumnType.RarePotion ? PotionRarity.Rare : PotionRarity.Common;
+                var names = _predictor.GetPotionRevealedNames(filterRarity);
+                var pc = new Color(StarWhite.R, StarWhite.G, StarWhite.B, names.Count > 0 ? 0.85f : 0.3f);
+                var lbl = CreateLabel(names.Count > 0 ? string.Join(", ", names) : I18n.Tr("locked_not_yet"), 15, pc);
+                lbl.AutowrapMode = TextServer.AutowrapMode.Word;
+                lbl.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                lbl.ClipContents = true;
+                row.AddChild(lbl);
+            }
+            else if (effectiveLocked)
             {
                 int offset = state.LockedAt;
                 var pred = _predictor.Predictions[offset];
                 if (type == ColumnType.Relic)
                 {
-                    var lbl = CreateLabel(pred.Relic?.Name ?? "?", 15, StarWhite);
+                    var lbl = CreateLabel(pred.Relic?.Name ?? "?", 15, LimeGreen);
                     lbl.AutowrapMode = TextServer.AutowrapMode.Word;
                     lbl.SizeFlagsHorizontal = SizeFlags.ExpandFill;
                     lbl.ClipContents = true;
@@ -255,18 +300,6 @@ public partial class LockedDashboard : Control
                     row.AddChild(rtl);
                 }
             }
-            else if (isPotionCol)
-            {
-                // Show revealed potion names from frozen sequences (no timing dependency)
-                PotionRarity filterRarity = type == ColumnType.RarePotion ? PotionRarity.Rare : PotionRarity.Common;
-                var names = _predictor.GetPotionRevealedNames(filterRarity);
-                var lbl = CreateLabel(names.Count > 0 ? string.Join(", ", names) : I18n.Tr("locked_not_yet"), 15,
-                    new Color(StarWhite.R, StarWhite.G, StarWhite.B, names.Count > 0 ? 0.6f : 0.3f));
-                lbl.AutowrapMode = TextServer.AutowrapMode.Word;
-                lbl.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-                lbl.ClipContents = true;
-                row.AddChild(lbl);
-            }
             else
             {
                 var lbl = CreateLabel(I18n.Tr("locked_not_yet"), 15,
@@ -292,11 +325,62 @@ public partial class LockedDashboard : Control
             if (_predictor.IsPotionRevealed(i)) revealedPotions++;
         _progressLabel.Text = $"{I18n.Tr("progress_columns")}: {lockedCols}/4  |  {I18n.Tr("progress_potions")}: {revealedPotions}/{_predictor.TotalPotionCount}";
 
-        // Refresh gold summary with color coding
-        int goldLeft = Math.Max(0, 7 - _predictor.CurrentOffset);
-        Color goldColor = goldLeft > 3 ? LimeGreen : goldLeft > 0 ? new Color(1f, 0.75f, 0.2f) : new Color(1f, 0.28f, 0.28f);
-        _goldLabel.AddThemeColorOverride("font_color", goldColor);
-        _goldLabel.Text = $"{I18n.Tr("gold_left")}: {goldLeft}";
+        // Refresh grid inventory
+        RefreshInventory();
+    }
+
+    private void RefreshInventory()
+    {
+        if (_inventoryContainer == null || _predictor == null) return;
+        while (_inventoryContainer.GetChildCount() > 0)
+        {
+            var child = _inventoryContainer.GetChild(0);
+            _inventoryContainer.RemoveChild(child);
+            child.QueueFree();
+        }
+
+        var inv = _predictor.GetGridInventory();
+        foreach (var entry in inv)
+        {
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 6);
+
+            // Name with dot indicator (filled = unrevealed items remain)
+            bool hasRemaining = entry.Remaining > 0;
+            string dot = hasRemaining ? "●" : "○";
+            float alpha = hasRemaining ? 1f : 0.25f;
+            var labelColor = new Color(entry.LabelColor.R, entry.LabelColor.G, entry.LabelColor.B, alpha);
+            var dotLabel = CreateLabel($"{dot} {entry.Label}", 13, labelColor);
+            dotLabel.CustomMinimumSize = new Vector2(80, 0);
+            row.AddChild(dotLabel);
+
+            // Remaining / Total
+            var remainColor = entry.Remaining > 0
+                ? new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.9f)
+                : new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.25f);
+            var remainLabel = CreateLabel($"{entry.Remaining}/{entry.Total}", 12, remainColor);
+            remainLabel.HorizontalAlignment = HorizontalAlignment.Center;
+            remainLabel.CustomMinimumSize = new Vector2(36, 0);
+            row.AddChild(remainLabel);
+
+            // Cell size
+            var sizeLabel = CreateLabel(entry.CellSize, 12,
+                new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.55f));
+            sizeLabel.HorizontalAlignment = HorizontalAlignment.Center;
+            sizeLabel.CustomMinimumSize = new Vector2(32, 0);
+            row.AddChild(sizeLabel);
+
+            // RNG benefit
+            Color benefitColor = entry.RngBenefit >= 6 ? LimeGreen
+                : entry.RngBenefit > 0 ? IceBlue
+                : new Color(1f, 0.28f, 0.28f);
+            var benefitLabel = CreateLabel(entry.BenefitLabel, 12, benefitColor);
+            benefitLabel.HorizontalAlignment = HorizontalAlignment.Center;
+            benefitLabel.CustomMinimumSize = new Vector2(28, 0);
+            row.AddChild(benefitLabel);
+
+            _inventoryContainer.AddChild(row);
+        }
     }
 
     private ColumnState GetColumnState(ColumnType col) => col switch
