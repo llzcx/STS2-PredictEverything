@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using Godot;
@@ -343,6 +344,7 @@ public class CrystalSpherePredictor
 
         if (unresolved.Count == 0) return (true, I18n.Tr("plan_all_resolved"), null);
 
+        var swPlan = Stopwatch.StartNew();
         if (PredictEverythingConfig.Instance.VerboseLogging)
         {
             var planDesc = string.Join(", ", pending.Select(x =>
@@ -400,7 +402,7 @@ public class CrystalSpherePredictor
             cur = targetOffset + cost;
         }
         var sequence = string.Join(" → ", steps);
-        ModLogger.Info($"  Plan: {sequence} (gold={goldUsed} offset: {CardPredictionOffset}→{cur})");
+        ModLogger.Info($"  Plan ({swPlan.Elapsed.TotalMilliseconds:F1}ms): {sequence} (gold={goldUsed} offset: {CardPredictionOffset}→{cur})");
         return (true, sequence, null);
     }
 
@@ -748,6 +750,7 @@ public class CrystalSpherePredictor
     {
         Rare.PlannedOffsets.Clear(); Uncommon.PlannedOffsets.Clear(); Common.PlannedOffsets.Clear();
         Relic.PlannedOffsets.Clear(); CommonPotionColumn.PlannedOffsets.Clear(); RarePotionColumn.PlannedOffsets.Clear();
+        var sw = Stopwatch.StartNew();
 
         // Card/relic target resolution
         int[]? rareOff = rt.HasValue ? FindCardOffsets(RareCardMap, rt.Value) : null;
@@ -777,7 +780,7 @@ public class CrystalSpherePredictor
 
         if (potionTargets.Count > availPotions)
         {
-            ModLogger.Info($"  Potion overflow: need {potionTargets.Count} reveals but only {availPotions} potion items left");
+            ModLogger.Info($"  Potion overflow: need {potionTargets.Count} reveals but only {availPotions} potion items left ({sw.Elapsed.TotalMilliseconds:F1}ms)");
             return (false, "", I18n.Tr("error_gold_limit"));
         }
 
@@ -795,7 +798,7 @@ public class CrystalSpherePredictor
         }).ToList();
 
         bool hasTarget = rareOff != null || uncOff != null || comOff != null || relOff != null || potionTargets.Count > 0;
-        if (!hasTarget) return (true, "", null);
+        if (!hasTarget) { ModLogger.Info($"  OptPath ({sw.Elapsed.TotalMilliseconds:F1}ms): no targets"); return (true, "", null); }
 
         // Card/relic target groups (potion is handled separately)
         var targetGroups = new List<(ColumnType t, int[] offs, int benefit)>();
@@ -807,27 +810,16 @@ public class CrystalSpherePredictor
         // Exclude potion column types from stone pool
         var targetTypes = new HashSet<ColumnType>(targetGroups.Select(g => g.t));
         foreach (var pt in potionTargets) targetTypes.Add(pt.type);
+        var t0 = sw.Elapsed;
         var gridStones = BuildGridStonePool(targetTypes);
-
+        var t1 = sw.Elapsed;
         if (PredictEverythingConfig.Instance.VerboseLogging)
-        {
-            ModLogger.Info($"  Step 1 — Targets resolved:");
-            foreach (var g in targetGroups)
-                ModLogger.Info($"    {g.t}: offsets=[{string.Join(",", g.offs)}] benefit={g.benefit}");
-            if (potionGridTargets.Count > 0)
-            {
-                var pd = string.Join(", ", potionGridTargets.Select(p =>
-                    $"{(p.Kind == TargetKind.FlexiblePotion ? "Flex" : "Exact")}{p.ColumnType}@idx{p.RevealIndex}"));
-                ModLogger.Info($"    Potions (expanded, auto-place): {pd}");
-            }
-            ModLogger.Info($"  Step 2 — Grid stone pool ({gridStones.Count} available):");
-            foreach (var s in gridStones)
-                ModLogger.Info($"    [{s.ColumnType}] {s.Source.GetType().Name} pos=({s.Position.X},{s.Position.Y}) cost={s.GridCost} benefit={s.RngBenefit}");
-            if (gridStones.Count == 0 && hasTarget)
-                ModLogger.Info($"    (pool empty)");
-        }
+            ModLogger.Info($"  [{(t1 - t0).TotalMilliseconds:F1}ms] Stone pool built: {gridStones.Count} items");
 
         var best = FindBestPathGrid(targetGroups, potionGridTargets, gridStones);
+        var t2 = sw.Elapsed;
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+            ModLogger.Info($"  [{(t2 - t1).TotalMilliseconds:F1}ms] FindBestPathGrid done");
         // Legacy fallback only when no potion targets (legacy can't handle index-based ordering)
         if (best == null && potionGridTargets.Count == 0)
         {
@@ -840,7 +832,7 @@ public class CrystalSpherePredictor
 
         if (best == null)
         {
-            ModLogger.Info($"  OptPath result: INFEASIBLE (no path from offset {CardPredictionOffset})");
+            ModLogger.Info($"  OptPath result ({sw.Elapsed.TotalMilliseconds:F1}ms): INFEASIBLE (no path from offset {CardPredictionOffset})");
             return (false, "", I18n.Tr("error_gold_limit"));
         }
 
@@ -865,7 +857,7 @@ public class CrystalSpherePredictor
             steps.Add(GetColumnState(type).Label);
             pos = offset + GetColumnState(type).RngCost;
         }
-        ModLogger.Info($"  OptPath result: [{string.Join(" -> ", steps)}] gold={totalG} end={pos}");
+        ModLogger.Info($"  OptPath result ({sw.Elapsed.TotalMilliseconds:F1}ms): [{string.Join(" -> ", steps)}] gold={totalG} end={pos}");
         return (true, string.Join(" -> ", steps), null);
     }
 

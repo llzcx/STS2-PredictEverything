@@ -86,7 +86,11 @@ public static partial class UnifiedPathFinder
         var targetTypes = new HashSet<ColumnType>(sorted.Select(t => t.ColumnType));
 
         if (PredictEverythingConfig.Instance.VerboseLogging)
-            ModLogger.Info($"        FindPath: startOffset={startOffset}, targets=[{string.Join(", ", sorted.Select(t => $"{t.ColumnType}@{t.TargetOffset}"))}]");
+        {
+            var tc = string.Join(", ", sorted.Select(t =>
+                t.TargetOffset.HasValue ? $"{t.ColumnType}@{t.TargetOffset}" : $"{t.ColumnType}@idx{t.RevealIndex}"));
+            ModLogger.Info($"        FindPath: startOffset={startOffset}, targets=[{tc}]");
+        }
 
         foreach (var target in sorted)
         {
@@ -94,12 +98,9 @@ public static partial class UnifiedPathFinder
 
             if (cur > targetOff)
             {
-                // Potion targets can share offsets — auto-advance to cur
                 bool isPotion = target.Kind == TargetKind.FlexiblePotion || target.Kind == TargetKind.ExactPotion;
                 if (isPotion)
                 {
-                    if (PredictEverythingConfig.Instance.VerboseLogging)
-                        ModLogger.Info($"        Potion target auto-bump: {targetOff}→{cur}");
                     targetOff = cur;
                 }
                 else
@@ -113,9 +114,6 @@ public static partial class UnifiedPathFinder
             if (cur < targetOff)
             {
                 int gap = targetOff - cur;
-                if (PredictEverythingConfig.Instance.VerboseLogging)
-                    ModLogger.Info($"        Gap {cur}→{targetOff} (Δ={gap}): filling...");
-
                 var (fillers, stoneIndices, fillGoldCells) = FillGap(gap, stonePool, consumedStones,
                     targetTypes, maxGoldCells - goldCells);
 
@@ -127,13 +125,6 @@ public static partial class UnifiedPathFinder
                 }
 
                 goldCells += fillGoldCells;
-
-                if (PredictEverythingConfig.Instance.VerboseLogging)
-                {
-                    var chosenStones = stoneIndices.Select(si => $"{stonePool[si].ColumnType}(c={stonePool[si].GridCost},b={stonePool[si].RngBenefit})");
-                    ModLogger.Info($"        → Stones: [{(stoneIndices.Count > 0 ? string.Join(", ", chosenStones) : "none")}] + Gold×{gap - stoneIndices.Sum(si => stonePool[si].RngBenefit)} = {fillGoldCells} gold cells total");
-                }
-
                 foreach (int si in stoneIndices)
                     consumedStones[si] = true;
 
@@ -147,12 +138,12 @@ public static partial class UnifiedPathFinder
                 cur = fillCur;
             }
 
-            // Reveal target
             path.Add((target.ColumnType, targetOff));
-            if (PredictEverythingConfig.Instance.VerboseLogging)
-                ModLogger.Info($"        → Target {target.ColumnType}@{targetOff} (cost={target.Cost}, benefit={target.Benefit}) revealed, cur→{targetOff + target.Benefit}");
             cur = targetOff + target.Benefit;
         }
+
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+            ModLogger.Info($"        → DONE goldCells={goldCells} pathLen={path.Count} endOffset={cur}");
 
         return (path, goldCells);
     }
@@ -220,11 +211,7 @@ public static partial class UnifiedPathFinder
         }
 
         if (bestEnd < 0)
-        {
-            if (PredictEverythingConfig.Instance.VerboseLogging)
-                ModLogger.Info($"          FillGap DP: gap={gap} INFEASIBLE (maxGold={maxGold}, unconsumed stones={consumed.Count(c => !c)})");
             return (null, new List<int>(), 0);
-        }
 
         // Backtrack stone indices
         var indices = new List<int>();
