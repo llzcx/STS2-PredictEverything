@@ -1001,7 +1001,6 @@ public partial class InfoPanel : Control
         }
         Refresh();
         RefreshPlanLabel();
-        // Override plan label with optimal path result
         if (_planLabel != null)
         {
             if (!feasible && error != null)

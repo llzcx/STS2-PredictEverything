@@ -19,6 +19,7 @@
     "progress_potions": "Potions",
     "plan_prefix": "Plan",
     "plan_clicks": "clicks",
+    "plan_computing": "Computing path...",
     "plan_all_resolved": "All rewards revealed",
     "hover_title": "Click reveals",
     "preview_card_title": "Card Preview",

@@ -19,6 +19,7 @@
     "progress_potions": "药水揭示",
     "plan_prefix": "计划",
     "plan_clicks": "次点击",
+    "plan_computing": "正在计算路径...",
     "plan_all_resolved": "所有奖励已揭示",
     "hover_title": "本次点击揭示",
     "preview_card_title": "卡牌预览",

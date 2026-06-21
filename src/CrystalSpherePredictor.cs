@@ -1279,12 +1279,10 @@ public class CrystalSpherePredictor
         List<(ColumnType?, int, string?, int)>? best = null;
         int bestGoldCells = int.MaxValue;
         int attempts = 0;
-        const int comboCap = 60; // combos sorted by distance; first N cover near-optimal
 
         foreach (var combo in combos)
         {
             attempts++;
-            if (attempts > comboCap && best != null) break;
             var targets = new List<GridTarget>();
 
             // Potion targets first (sorted by RevealIndex), auto-place at cur
@@ -1304,6 +1302,27 @@ public class CrystalSpherePredictor
                          : targetGroups[i].t == ColumnType.Relic ? 16 : 1,
                     Label = GetColumnState(targetGroups[i].t).Label,
                 });
+            }
+
+            // Pre-filter: prune combos that can't possibly work.
+            // Rule 1 — structural overlap: prev offset + benefit > next offset
+            // Rule 2 — total gap > available stone benefit (can never be filled)
+            {
+                var sorted = targets.Where(t => t.TargetOffset.HasValue)
+                    .OrderBy(t => t.TargetOffset!.Value).ToList();
+                bool conflict = false;
+                int totalGap = sorted.Count > 0 ? sorted[0].TargetOffset!.Value - CardPredictionOffset : 0;
+                for (int i = 1; i < sorted.Count && !conflict; i++)
+                {
+                    int prevEnd = sorted[i - 1].TargetOffset!.Value + sorted[i - 1].Benefit;
+                    int gap = sorted[i].TargetOffset!.Value - prevEnd;
+                    if (gap < 0) conflict = true;
+                    else totalGap += gap;
+                }
+                if (conflict) continue;
+                // Total RNG benefit available from all filler items combined
+                int maxFill = gridStones.Sum(s => s.RngBenefit);
+                if (totalGap > maxFill) continue;
             }
 
             if (PredictEverythingConfig.Instance.VerboseLogging)
