@@ -31,8 +31,8 @@ public partial class InfoPanel : Control
     private OptionButton _rarePotionFilter = null!;
 
     private bool _collapsed;
-    private bool _dragging;
-    private Vector2 _dragStart;
+    private DragHandler _dragHandler = null!;
+    private Label _titleLabel = null!;
     private Button _collapseBtn = null!;
     private Button _helpBtn = null!;
     private Control _screenParent = null!;
@@ -93,6 +93,7 @@ public partial class InfoPanel : Control
         // Initial population — predictor already initialized before Screen_Ready
         panel.Refresh();
         panel.RefreshPlanLabel();
+        panel._dragHandler.Start();
         return panel;
     }
 
@@ -103,7 +104,6 @@ public partial class InfoPanel : Control
         Name = "PredictEverythingInfoPanel";
         MouseFilter = MouseFilterEnum.Stop;
         ProcessMode = ProcessModeEnum.Always;
-        SetProcess(true);
 
         var config = PredictEverythingConfig.Instance;
 
@@ -146,9 +146,9 @@ public partial class InfoPanel : Control
         _titleBar.MouseFilter = MouseFilterEnum.Stop;
         _titleBar.AddThemeConstantOverride("separation", 6);
 
-        var title = CreateLocalizedLabel("panel_title", 22, StarWhite);
-        title.AddThemeFontSizeOverride("font_size", 22);
-        _titleBar.AddChild(title);
+        _titleLabel = CreateLocalizedLabel("panel_title", 22, StarWhite);
+        _titleLabel.AddThemeFontSizeOverride("font_size", 18);
+        _titleBar.AddChild(_titleLabel);
 
         _titleBar.AddChild(new Control
         {
@@ -175,12 +175,11 @@ public partial class InfoPanel : Control
         _collapseBtn.Pressed += ToggleCollapse;
         _titleBar.AddChild(_collapseBtn);
 
-        _titleBar.GuiInput += OnTitleBarGuiInput;
         _root.AddChild(_titleBar);
 
         // ---- Column headers ----
         _headerRow = new HBoxContainer();
-        _headerRow.AddThemeConstantOverride("separation", 4);
+        _headerRow.AddThemeConstantOverride("separation", 1);
 
         // Narrow offset column header
         var offsetHeader = CreateLabel("#", 9, new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.4f));
@@ -206,7 +205,7 @@ public partial class InfoPanel : Control
             headerLabel.ScrollActive = false;
             headerLabel.HorizontalAlignment = HorizontalAlignment.Center;
             headerLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            headerLabel.AddThemeFontSizeOverride("normal_font_size", 16);
+            headerLabel.AddThemeFontSizeOverride("normal_font_size", 13);
             headerLabel.AddThemeColorOverride("default_color", StarWhite);
             headerLabel.MouseFilter = MouseFilterEnum.Pass;
             _headerLabels[col] = headerLabel;
@@ -219,7 +218,9 @@ public partial class InfoPanel : Control
         // ---- Card/Relic filter dropdowns ---- (temporarily disabled)
         // Card/Relic filter dropdowns
         _filterRow = new HBoxContainer();
-        _filterRow.AddThemeConstantOverride("separation", 4);
+        _filterRow.AddThemeConstantOverride("separation", 1);
+        // Offset spacer — matches the 24px offset column in header and data rows
+        _filterRow.AddChild(new Control { CustomMinimumSize = new Vector2(24, 0) });
         _rareFilter = BuildFilter(ColumnType.Rare, "col_rare");
         _uncommonFilter = BuildFilter(ColumnType.Uncommon, "col_uncommon");
         _commonFilter = BuildFilter(ColumnType.Common, "col_common");
@@ -243,7 +244,7 @@ public partial class InfoPanel : Control
         _planLabel.ScrollFollowing = false;
         _planLabel.ScrollActive = false;
         _planLabel.MouseFilter = MouseFilterEnum.Pass;
-        _planLabel.AddThemeFontSizeOverride("normal_font_size", 16);
+        _planLabel.AddThemeFontSizeOverride("normal_font_size", 13);
         _planLabel.AddThemeColorOverride("default_color", StarWhite);
         _root.AddChild(_planLabel);
 
@@ -280,6 +281,8 @@ public partial class InfoPanel : Control
         legend1.BbcodeEnabled = true;
         legend1.FitContent = true;
         legend1.ScrollActive = false;
+        legend1.AutowrapMode = TextServer.AutowrapMode.Word;
+        legend1.SizeFlagsHorizontal = SizeFlags.Fill;
         legend1.Text = $"[color=#66FF66][b]✦[/b][/color] = {I18n.Tr("legend_upgraded")}";
         legend1.AddThemeFontSizeOverride("normal_font_size", 11);
         legend1.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
@@ -289,6 +292,8 @@ public partial class InfoPanel : Control
         legend2.BbcodeEnabled = true;
         legend2.FitContent = true;
         legend2.ScrollActive = false;
+        legend2.AutowrapMode = TextServer.AutowrapMode.Word;
+        legend2.SizeFlagsHorizontal = SizeFlags.Fill;
         legend2.Text = I18n.Tr("legend_costs");
         legend2.AddThemeFontSizeOverride("normal_font_size", 11);
         legend2.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
@@ -298,16 +303,19 @@ public partial class InfoPanel : Control
         legend3.BbcodeEnabled = true;
         legend3.FitContent = true;
         legend3.ScrollActive = false;
+        legend3.AutowrapMode = TextServer.AutowrapMode.Word;
+        legend3.SizeFlagsHorizontal = SizeFlags.Fill;
         legend3.Text = I18n.Tr("legend_order");
         legend3.AddThemeFontSizeOverride("normal_font_size", 11);
         legend3.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
         _footer.AddChild(legend3);
 
-        // Filter algorithm explanation
         var legend4 = new RichTextLabel();
         legend4.BbcodeEnabled = true;
         legend4.FitContent = true;
         legend4.ScrollActive = false;
+        legend4.AutowrapMode = TextServer.AutowrapMode.Word;
+        legend4.SizeFlagsHorizontal = SizeFlags.Fill;
         legend4.Text = I18n.Tr("legend_filter");
         legend4.AddThemeFontSizeOverride("normal_font_size", 11);
         legend4.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
@@ -317,7 +325,7 @@ public partial class InfoPanel : Control
         _root.AddChild(_footer);
 
         // ---- Size and positioning ----
-        float w = config.PanelW > 0 ? config.PanelW : 580f;
+        float w = config.PanelW > 0 ? config.PanelW : 560f;
         float h = config.PanelH > 0 ? config.PanelH : 680f;
         float y = config.PanelY > 0 ? config.PanelY : 200f;
 
@@ -344,6 +352,23 @@ public partial class InfoPanel : Control
 
         CustomMinimumSize = new Vector2(w, h);
         _fullHeight = OffsetBottom - OffsetTop;
+
+        // Drag support
+        _dragHandler = new DragHandler(this, _titleBar,
+            onDragStart: () => _titleLabel.AddThemeColorOverride("font_color", Gold),
+            onDragEnd: () =>
+            {
+                _titleLabel.AddThemeColorOverride("font_color", StarWhite);
+                var gpos = GlobalPosition;
+                float pw = OffsetRight - OffsetLeft;
+                float ph = OffsetBottom - OffsetTop;
+                AnchorLeft = 0; AnchorTop = 0; AnchorRight = 0; AnchorBottom = 0;
+                OffsetLeft = gpos.X; OffsetTop = gpos.Y;
+                OffsetRight = gpos.X + pw; OffsetBottom = gpos.Y + ph;
+                var config = PredictEverythingConfig.Instance;
+                config.PanelX = gpos.X; config.PanelY = gpos.Y;
+                PredictEverythingConfig.Save();
+            });
 
         // Initial data population
         Refresh();
@@ -375,7 +400,7 @@ public partial class InfoPanel : Control
             if (pred == null) continue;
 
             var rowHbox = new HBoxContainer();
-            rowHbox.AddThemeConstantOverride("separation", 2);
+            rowHbox.AddThemeConstantOverride("separation", 1);
             rowHbox.MouseFilter = MouseFilterEnum.Pass;
 
             // Determine row background color
@@ -484,7 +509,7 @@ public partial class InfoPanel : Control
         {
             var relic = pred.Relic;
             string relicName = relic?.Name ?? "?";
-            var relicLabel = CreateLabel(relicName, 15, StarWhite);
+            var relicLabel = CreateLabel(relicName, 12, StarWhite);
             relicLabel.HorizontalAlignment = HorizontalAlignment.Center;
             relicLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             relicLabel.MouseFilter = MouseFilterEnum.Pass;
@@ -539,7 +564,7 @@ public partial class InfoPanel : Control
                     }
                     else
                     {
-                        var lbl = CreateLabel(name, 12, IceBlue);
+                        var lbl = CreateLabel(name, 12, new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.85f));
                         lbl.HorizontalAlignment = HorizontalAlignment.Center;
                         lbl.AutowrapMode = TextServer.AutowrapMode.Word;
                         lbl.MouseFilter = MouseFilterEnum.Pass;
@@ -595,7 +620,7 @@ public partial class InfoPanel : Control
                     }
                     else
                     {
-                        var lbl = CreateLabel(name, 12, IceBlue);
+                        var lbl = CreateLabel(name, 12, new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.85f));
                         lbl.HorizontalAlignment = HorizontalAlignment.Center;
                         lbl.AutowrapMode = TextServer.AutowrapMode.Word;
                         lbl.MouseFilter = MouseFilterEnum.Pass;
@@ -628,13 +653,13 @@ public partial class InfoPanel : Control
                     rtl.AutowrapMode = TextServer.AutowrapMode.Word;
                     rtl.ClipContents = true;
                     rtl.MouseFilter = MouseFilterEnum.Pass;
-                    rtl.AddThemeFontSizeOverride("normal_font_size", 14);
-                    rtl.AddThemeFontSizeOverride("bold_font_size", 14);
+                    rtl.AddThemeFontSizeOverride("normal_font_size", 12);
+                    rtl.AddThemeFontSizeOverride("bold_font_size", 12);
                     cardLabel = rtl;
                 }
                 else
                 {
-                    var lbl = CreateLabel(cardName, 14,
+                    var lbl = CreateLabel(cardName, 12,
                         new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.85f));
                     lbl.HorizontalAlignment = HorizontalAlignment.Center;
                     lbl.AutowrapMode = TextServer.AutowrapMode.Word;
@@ -805,7 +830,7 @@ public partial class InfoPanel : Control
     private OptionButton BuildFilter(ColumnType col, string labelKey)
     {
         var ob = new OptionButton();
-        ob.AddThemeFontSizeOverride("font_size", 12);
+        ob.AddThemeFontSizeOverride("font_size", 10);
         ob.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         ob.MouseFilter = MouseFilterEnum.Pass;
 
@@ -837,13 +862,14 @@ public partial class InfoPanel : Control
             }
         }
         ob.ItemSelected += _ => OnFilterChanged();
+        ob.GetPopup().AddThemeFontSizeOverride("font_size", 10);
         return ob;
     }
 
     private OptionButton BuildPotionFilter(PotionRarity rarity, string labelKey)
     {
         var ob = new OptionButton();
-        ob.AddThemeFontSizeOverride("font_size", 12);
+        ob.AddThemeFontSizeOverride("font_size", 10);
         ob.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         ob.MouseFilter = MouseFilterEnum.Pass;
         ob.AddItem($"-- {I18n.Tr(labelKey)} --", 0);
@@ -864,6 +890,7 @@ public partial class InfoPanel : Control
             }
         }
         ob.ItemSelected += _ => OnFilterChanged();
+        ob.GetPopup().AddThemeFontSizeOverride("font_size", 10);
         return ob;
     }
 
@@ -972,52 +999,6 @@ public partial class InfoPanel : Control
         bool upgraded = text.EndsWith("+");
         string cleanName = upgraded ? text[..^1] : text;
         target = (cleanName, upgraded);
-    }
-
-    // =============== Drag handling ===============
-
-    private void OnTitleBarGuiInput(InputEvent e)
-    {
-        if (e is InputEventMouseButton mb &&
-            mb.ButtonIndex == MouseButton.Left &&
-            mb.Pressed)
-        {
-            _dragging = true;
-            _dragStart = GetGlobalMousePosition() - GlobalPosition;
-        }
-    }
-
-    public override void _Process(double delta)
-    {
-        if (!_dragging) return;
-
-        if (Input.IsMouseButtonPressed(MouseButton.Left))
-        {
-            GlobalPosition = GetGlobalMousePosition() - _dragStart;
-        }
-        else
-        {
-            // Mouse released -- end drag and persist position
-            _dragging = false;
-
-            // Convert to manual (top-left) anchoring
-            var gpos = GlobalPosition;
-            float w = OffsetRight - OffsetLeft;
-            float h = OffsetBottom - OffsetTop;
-            AnchorLeft = 0;
-            AnchorTop = 0;
-            AnchorRight = 0;
-            AnchorBottom = 0;
-            OffsetLeft = gpos.X;
-            OffsetTop = gpos.Y;
-            OffsetRight = gpos.X + w;
-            OffsetBottom = gpos.Y + h;
-
-            var config = PredictEverythingConfig.Instance;
-            config.PanelX = gpos.X;
-            config.PanelY = gpos.Y;
-            PredictEverythingConfig.Save();
-        }
     }
 
     // =============== I18n ===============

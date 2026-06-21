@@ -19,10 +19,11 @@ public class PredictEverythingConfig
     public float PanelY { get; set; } = -1;
     public float PanelW { get; set; } = -1;
     public float PanelH { get; set; } = -1;
+    public float DashboardX { get; set; } = -1;
+    public float DashboardY { get; set; } = -1;
     public bool TutorialShown { get; set; } = false;
 
-    private static string ConfigPath => Path.Combine(
-        OS.GetUserDataDir(), "mod_configs", "PredictEverything", "config.json");
+    private static string ConfigPath => Path.Combine(ModLogger.ModDir, "config", "config.json");
 
     public static void Load()
     {

@@ -24,6 +24,9 @@ public partial class LockedDashboard : Control
     private Label _progressLabel = null!;
     private Label _inventoryTitle = null!;
     private VBoxContainer _inventoryContainer = null!;
+    private HBoxContainer _titleBar = null!;
+    private Label _titleLabel = null!;
+    private DragHandler _dragHandler = null!;
     private bool _collapsed;
     private float _fullHeight;
 
@@ -73,6 +76,7 @@ public partial class LockedDashboard : Control
         I18n.LanguageChanged += dashboard.OnLanguageChanged;
 
         dashboard.Refresh();
+        dashboard._dragHandler.Start();
         return dashboard;
     }
 
@@ -120,15 +124,15 @@ public partial class LockedDashboard : Control
         AddChild(_root);
 
         // ---- Title bar ----
-        var titleBar = new HBoxContainer();
-        titleBar.MouseFilter = MouseFilterEnum.Stop;
-        titleBar.AddThemeConstantOverride("separation", 6);
+        _titleBar = new HBoxContainer();
+        _titleBar.MouseFilter = MouseFilterEnum.Stop;
+        _titleBar.AddThemeConstantOverride("separation", 6);
 
-        var title = CreateLocalizedLabel("locked_title", 13, StarWhite);
-        title.AddThemeFontSizeOverride("font_size", 20);
-        titleBar.AddChild(title);
+        _titleLabel = CreateLocalizedLabel("locked_title", 13, StarWhite);
+        _titleLabel.AddThemeFontSizeOverride("font_size", 20);
+        _titleBar.AddChild(_titleLabel);
 
-        titleBar.AddChild(new Control
+        _titleBar.AddChild(new Control
         {
             CustomMinimumSize = new Vector2(10, 0),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
@@ -137,9 +141,9 @@ public partial class LockedDashboard : Control
         var collapseBtn = CreateIconButton("▼", 14);
         collapseBtn.Pressed += ToggleCollapse;
         _collapseBtn = collapseBtn;
-        titleBar.AddChild(collapseBtn);
+        _titleBar.AddChild(collapseBtn);
 
-        _root.AddChild(titleBar);
+        _root.AddChild(_titleBar);
 
         // ---- Progress summary (always visible) ----
         _progressLabel = CreateLabel("", 12, new Color(0.6f, 0.6f, 0.6f));
@@ -197,13 +201,40 @@ public partial class LockedDashboard : Control
         // ---- Size and positioning (right side) ----
         float w = 320f;
         float h = 550f;
-        SetAnchorsPreset(LayoutPreset.TopRight);
-        OffsetLeft = -w - 20;
-        OffsetRight = -20;
-        OffsetTop = 200;
-        OffsetBottom = 100 + h;
+        var config = PredictEverythingConfig.Instance;
+        if (config.DashboardX >= 0 && config.DashboardY >= 0)
+        {
+            // Manual position from drag
+            AnchorLeft = 0; AnchorTop = 0; AnchorRight = 0; AnchorBottom = 0;
+            OffsetLeft = config.DashboardX; OffsetTop = config.DashboardY;
+            OffsetRight = config.DashboardX + w; OffsetBottom = config.DashboardY + h;
+        }
+        else
+        {
+            SetAnchorsPreset(LayoutPreset.TopRight);
+            OffsetLeft = -w - 20;
+            OffsetRight = -20;
+            OffsetTop = 200;
+            OffsetBottom = 100 + h;
+        }
         CustomMinimumSize = new Vector2(w, h);
         _fullHeight = OffsetBottom - OffsetTop;
+
+        // Drag support
+        _dragHandler = new DragHandler(this, _titleBar,
+            onDragStart: () => _titleLabel.AddThemeColorOverride("font_color", Gold),
+            onDragEnd: () =>
+            {
+                _titleLabel.AddThemeColorOverride("font_color", StarWhite);
+                var gpos = GlobalPosition;
+                float pw = OffsetRight - OffsetLeft;
+                float ph = OffsetBottom - OffsetTop;
+                AnchorLeft = 0; AnchorTop = 0; AnchorRight = 0; AnchorBottom = 0;
+                OffsetLeft = gpos.X; OffsetTop = gpos.Y;
+                OffsetRight = gpos.X + pw; OffsetBottom = gpos.Y + ph;
+                config.DashboardX = gpos.X; config.DashboardY = gpos.Y;
+                PredictEverythingConfig.Save();
+            });
 
         // Initial data population
         Refresh();
