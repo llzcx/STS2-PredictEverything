@@ -1276,6 +1276,20 @@ public class CrystalSpherePredictor
         if (PredictEverythingConfig.Instance.VerboseLogging)
             ModLogger.Info($"  Step 3 — Cartesian product: {combos.Count} combos");
 
+        // Pre-compute gap reachability: which gap values can be exactly filled
+        // by the stone pool. One subset-sum DP, then per-combo O(1) check.
+        int maxComboOff = combos.Count > 0 ? combos.Max(c => c.Max()) : 0;
+        int maxGap = Math.Max(maxComboOff - CardPredictionOffset, 0);
+        var canFill = new bool[maxGap + 1];
+        canFill[0] = true;
+        foreach (var stone in gridStones)
+        {
+            int b = stone.RngBenefit;
+            if (b <= 0 || b > maxGap) continue;
+            for (int g = maxGap - b; g >= 0; g--)
+                if (canFill[g]) canFill[g + b] = true;
+        }
+
         List<(ColumnType?, int, string?, int)>? best = null;
         int bestGoldCells = int.MaxValue;
         int attempts = 0;
@@ -1305,22 +1319,28 @@ public class CrystalSpherePredictor
             }
 
             // Pre-filter: prune combos that can't possibly work.
-            // Rule 1 — structural overlap: prev offset + benefit > next offset
-            // Rule 2 — total gap > available stone benefit (can never be filled)
+            // Rule 1 — structural overlap
+            // Rule 2 — total gap > available stone benefit
+            // Rule 3 — any individual gap not exactly reachable by stones
             {
                 var sorted = targets.Where(t => t.TargetOffset.HasValue)
                     .OrderBy(t => t.TargetOffset!.Value).ToList();
                 bool conflict = false;
                 int totalGap = sorted.Count > 0 ? sorted[0].TargetOffset!.Value - CardPredictionOffset : 0;
-                for (int i = 1; i < sorted.Count && !conflict; i++)
+                bool skip = false;
+                if (totalGap > 0 && totalGap <= maxGap && !canFill[totalGap]) skip = true;
+                for (int i = 1; i < sorted.Count && !conflict && !skip; i++)
                 {
                     int prevEnd = sorted[i - 1].TargetOffset!.Value + sorted[i - 1].Benefit;
                     int gap = sorted[i].TargetOffset!.Value - prevEnd;
                     if (gap < 0) conflict = true;
-                    else totalGap += gap;
+                    else
+                    {
+                        totalGap += gap;
+                        if (gap > 0 && gap <= maxGap && !canFill[gap]) skip = true;
+                    }
                 }
-                if (conflict) continue;
-                // Total RNG benefit available from all filler items combined
+                if (conflict || skip) continue;
                 int maxFill = gridStones.Sum(s => s.RngBenefit);
                 if (totalGap > maxFill) continue;
             }
