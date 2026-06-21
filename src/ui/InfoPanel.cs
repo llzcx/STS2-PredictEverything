@@ -372,6 +372,7 @@ public partial class InfoPanel : Control
 
         // Initial data population
         Refresh();
+        UpdateFilterStates();
     }
 
     // =============== Refresh / Data ===============
@@ -384,6 +385,7 @@ public partial class InfoPanel : Control
         if (_rowsContainer == null) return;
         if (_predictor == null || !_predictor.IsActive) return;
         RefreshHeaders();
+        UpdateFilterStates();
 
         // Clear existing rows
         while (_rowsContainer.GetChildCount() > 0)
@@ -756,6 +758,28 @@ public partial class InfoPanel : Control
         }
     }
 
+    /// <summary>
+    /// Disable filter dropdowns for locked columns and reset their selection to default.
+    /// </summary>
+    private void UpdateFilterStates()
+    {
+        if (_predictor == null) return;
+
+        void Apply(OptionButton? ob, bool locked)
+        {
+            if (ob == null) return;
+            ob.Disabled = locked;
+            if (locked) ob.Selected = 0;
+        }
+
+        Apply(_rareFilter, _predictor.IsColumnLocked(ColumnType.Rare));
+        Apply(_uncommonFilter, _predictor.IsColumnLocked(ColumnType.Uncommon));
+        Apply(_commonFilter, _predictor.IsColumnLocked(ColumnType.Common));
+        Apply(_relicFilter, _predictor.IsColumnLocked(ColumnType.Relic));
+        Apply(_commonPotionFilter, _predictor.IsColumnLocked(ColumnType.CommonPotion));
+        Apply(_rarePotionFilter, _predictor.IsColumnLocked(ColumnType.RarePotion));
+    }
+
     // =============== Row state helpers ===============
 
     private static string FormatCellDesc(int row, ColumnType col, OffsetPrediction pred)
@@ -897,6 +921,7 @@ public partial class InfoPanel : Control
     private void OnFilterChanged()
     {
         if (_predictor == null || !_predictor.IsActive) return;
+        if (_predictor.DivinationCount == 0) return;
 
         (string, bool)? rareT = null, uncT = null, comT = null;
         string? relT = null;
@@ -945,7 +970,7 @@ public partial class InfoPanel : Control
             _predictor.CommonPotionColumn.PlannedOffsets.Clear();
             _predictor.RarePotionColumn.PlannedOffsets.Clear();
             if (_planLabel != null)
-                _planLabel.Text = $"[color=#FF6B35]{I18n.Tr("error_gold_limit")}[/color]"; // TODO: dedicated i18n key
+                _planLabel.Text = $"[color=#FF6B35]{I18n.Tr("error_potion_index_conflict")}[/color]";
             Refresh();
             return;
         }
@@ -1059,6 +1084,11 @@ public partial class InfoPanel : Control
             predictor.Relic.PlannedOffsets.Clear();
             predictor.CommonPotionColumn.PlannedOffsets.Clear();
             predictor.RarePotionColumn.PlannedOffsets.Clear();
+            // Reset all dropdown filters to default
+            _rareFilter.Selected = 0;
+            _uncommonFilter.Selected = 0;
+            _commonFilter.Selected = 0;
+            _relicFilter.Selected = 0;
             _commonPotionFilter.Selected = 0;
             _rarePotionFilter.Selected = 0;
             _predictor = predictor;

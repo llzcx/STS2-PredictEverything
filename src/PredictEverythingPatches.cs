@@ -404,6 +404,9 @@ public static class PredictEverythingPatches
         ModLogger.Info($"║ Unrevealed: {unrevealed,2} items remain hidden");
         ModLogger.Info($"╚══════════════════════════════════════════════════════════════╝");
         ModLogger.Info("");
+        // Notify UI that all divinations are exhausted — triggers "all resolved" message
+        pred.NotifyComplete();
+
         ModLogger.Info(">>> Phase 1: ToReward for ALL revealed items (in reveal order)");
         ModLogger.Info("    (All potion RNG consumed here, before any Populate)");
     }

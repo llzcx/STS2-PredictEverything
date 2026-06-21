@@ -58,6 +58,17 @@ public class CrystalSpherePredictor
     public OffsetPrediction[] Predictions { get; private set; } = null!;
     public const int MaxOffset = 30; // max CardPredictionOffset: 3P+7G+1R+18(3cards)=29, rounded up
     public bool IsActive => Predictions != null;
+    public int DivinationCount => _minigame?.DivinationCount ?? -1;
+
+    /// <summary>
+    /// Called by patches when CompleteMinigame fires — all divinations exhausted.
+    /// Triggers UI refresh to show the "all resolved" message.
+    /// </summary>
+    public void NotifyComplete()
+    {
+        StateChanged?.Invoke();
+        PlanChanged?.Invoke();
+    }
 
     // State tracking — counts items revealed so far (for Populate RNG tracking)
     private int _goldsRevealed;
@@ -75,10 +86,10 @@ public class CrystalSpherePredictor
     public int UnrevealedCommonCount => PotionData?.UnrevealedCommonCount ?? 0;
     public int UnrevealedRareCount => PotionData?.UnrevealedRareCount ?? 0;
     public bool[] PotionRevealed => PotionData?.Revealed ?? System.Array.Empty<bool>();
-    public Dictionary<(string n, bool u), int> RareCardMap { get; private set; } = null!;
-    public Dictionary<(string n, bool u), int> UncommonCardMap { get; private set; } = null!;
-    public Dictionary<(string n, bool u), int> CommonCardMap { get; private set; } = null!;
-    public Dictionary<string, int> RelicMap { get; private set; } = null!;
+    public Dictionary<(string n, bool u), List<int>> RareCardMap { get; private set; } = null!;
+    public Dictionary<(string n, bool u), List<int>> UncommonCardMap { get; private set; } = null!;
+    public Dictionary<(string n, bool u), List<int>> CommonCardMap { get; private set; } = null!;
+    public Dictionary<string, List<int>> RelicMap { get; private set; } = null!;
     public Dictionary<string, int> CommonPotionMap { get; private set; } = null!;
     public Dictionary<string, int> RarePotionMap { get; private set; } = null!;
     public List<(string n, bool u)> RareCardList { get; private set; } = null!;
@@ -320,6 +331,10 @@ public class CrystalSpherePredictor
 
     public (bool feasible, string sequence, string? error) ComputePlan()
     {
+        // Minigame over — all divination clicks exhausted
+        if (_minigame != null && _minigame.DivinationCount == 0)
+            return (true, I18n.Tr("plan_all_resolved"), null);
+
         var allColumns = new (ColumnType type, ColumnState state)[] {
             (ColumnType.Rare, Rare), (ColumnType.Uncommon, Uncommon),
             (ColumnType.Common, Common), (ColumnType.Relic, Relic),
@@ -357,52 +372,62 @@ public class CrystalSpherePredictor
             ModLogger.Info($"╚════════════════════════════════════════════════════════════");
         }
 
-        int cur = CardPredictionOffset;
-        int goldUsed = 0;
-        var steps = new List<string>();
-
+        // Build grid targets from manually planned offsets
+        var gridTargets = new List<GridTarget>();
         foreach (var item in unresolved)
         {
-            var col = item.col;
-            int targetOffset = item.offset;
-            int cost = item.cost;
+            var state = GetColumnState(item.col);
+            TargetKind kind = item.col switch
+            {
+                ColumnType.Relic => TargetKind.ExactRelic,
+                ColumnType.CommonPotion => TargetKind.FlexiblePotion,
+                ColumnType.RarePotion => TargetKind.FlexiblePotion,
+                _ => TargetKind.ExactCard
+            };
+            int cellCost = item.col switch
+            {
+                ColumnType.Relic => 16,                  // 4×4 relic
+                ColumnType.CommonPotion => 3,            // 1×3 potion
+                ColumnType.RarePotion => 4,              // 2×2 potion
+                _ => 4                                   // 2×2 card
+            };
+            gridTargets.Add(new GridTarget
+            {
+                Kind = kind,
+                ColumnType = item.col,
+                TargetOffset = item.offset,
+                Cost = cellCost,
+                Benefit = item.cost,
+                Label = state.Label,
+            });
+        }
 
-            int delta = targetOffset - cur;
-            if (delta < 0)
-            {
-                // Potions can share the same planned offset — auto-bump to cur
-                if (col == ColumnType.CommonPotion || col == ColumnType.RarePotion)
-                {
-                    delta = 0;
-                    if (PredictEverythingConfig.Instance.VerboseLogging)
-                        ModLogger.Info($"  Plan: auto-bump {col} from offset {targetOffset} to {cur} (potion shared slot)");
-                }
-                else
-                {
-                    var conflicts = pending.Where(x =>
-                        x.offset + x.cost > targetOffset &&
-                        x.offset <= targetOffset &&
-                        x.col != col).ToList();
-                    if (conflicts.Count > 0)
-                    {
-                        var conflictCol = conflicts[0].col;
-                        return (false, "", string.Format(I18n.Tr("error_conflict"), targetOffset, GetColumnState(conflictCol).Label));
-                    }
-                    return (false, "", string.Format(I18n.Tr("error_passed"), cur, targetOffset));
-                }
-            }
-            if (delta > 0)
-            {
-                goldUsed += delta;
-                if (goldUsed > 7)
-                    return (false, "", string.Format(I18n.Tr("error_gold_limit"), goldUsed));
-                steps.Add($"{I18n.Tr("gold_step")}{delta}");
-            }
-            steps.Add(GetColumnState(col).Label);
-            cur = targetOffset + cost;
+        // Exclude all planned column types from the filler stone pool —
+        // those items must be revealed at their planned offsets, not used as fillers.
+        var plannedTypes = new HashSet<ColumnType>(pending.Select(x => x.col));
+        var stones = BuildGridStonePool(plannedTypes);
+
+        var (rawPath, goldCells) = UnifiedPathFinder.FindPath(gridTargets, stones, CardPredictionOffset);
+        if (rawPath == null)
+        {
+            if (PredictEverythingConfig.Instance.VerboseLogging)
+                ModLogger.Info($"  Plan ({swPlan.Elapsed.TotalMilliseconds:F1}ms): INFEASIBLE — grid DP found no path from offset {CardPredictionOffset}");
+            return (false, "", string.Format(I18n.Tr("error_no_path"), CardPredictionOffset));
+        }
+
+        int cur = CardPredictionOffset;
+        int totalGoldDelta = 0;
+        var steps = new List<string>();
+        foreach (var (type, offset) in rawPath)
+        {
+            int d = offset - cur;
+            totalGoldDelta += d;
+            if (d > 0) steps.Add(I18n.Tr("gold_step") + d);
+            steps.Add(GetColumnState(type).Label);
+            cur = offset + GetColumnState(type).RngCost;
         }
         var sequence = string.Join(" → ", steps);
-        ModLogger.Info($"  Plan ({swPlan.Elapsed.TotalMilliseconds:F1}ms): {sequence} (gold={goldUsed} offset: {CardPredictionOffset}→{cur})");
+        ModLogger.Info($"  Plan ({swPlan.Elapsed.TotalMilliseconds:F1}ms): {sequence} (goldCells={goldCells} goldDelta={totalGoldDelta} offset: {CardPredictionOffset}→{cur})");
         return (true, sequence, null);
     }
 
@@ -729,12 +754,13 @@ public class CrystalSpherePredictor
         {
             var p = Predictions[off];
             foreach (var c in p.RareCards.Where(c => c.Card != null))
-            { var k = (c.Name, c.Upgraded); if (!RareCardMap.ContainsKey(k)) RareCardMap[k] = off; }
+            { var k = (c.Name, c.Upgraded); if (!RareCardMap.ContainsKey(k)) RareCardMap[k] = new List<int>(); RareCardMap[k].Add(off); }
             foreach (var c in p.UncommonCards.Where(c => c.Card != null))
-            { var k = (c.Name, c.Upgraded); if (!UncommonCardMap.ContainsKey(k)) UncommonCardMap[k] = off; }
+            { var k = (c.Name, c.Upgraded); if (!UncommonCardMap.ContainsKey(k)) UncommonCardMap[k] = new List<int>(); UncommonCardMap[k].Add(off); }
             foreach (var c in p.CommonCards.Where(c => c.Card != null))
-            { var k = (c.Name, c.Upgraded); if (!CommonCardMap.ContainsKey(k)) CommonCardMap[k] = off; }
-            if (p.Relic.Name != "?" && !RelicMap.ContainsKey(p.Relic.Name)) RelicMap[p.Relic.Name] = off;
+            { var k = (c.Name, c.Upgraded); if (!CommonCardMap.ContainsKey(k)) CommonCardMap[k] = new List<int>(); CommonCardMap[k].Add(off); }
+            if (p.Relic.Name != "?" && !RelicMap.ContainsKey(p.Relic.Name)) RelicMap[p.Relic.Name] = new List<int>();
+            if (p.Relic.Name != "?" && !RelicMap[p.Relic.Name].Contains(off)) RelicMap[p.Relic.Name].Add(off);
             if (p.CommonPotion?.Name is string cn && cn != "?" && !CommonPotionMap.ContainsKey(cn)) CommonPotionMap[cn] = off;
             if (p.RarePotion?.Name is string rn && rn != "?" && !RarePotionMap.ContainsKey(rn)) RarePotionMap[rn] = off;
         }
@@ -752,11 +778,11 @@ public class CrystalSpherePredictor
         Relic.PlannedOffsets.Clear(); CommonPotionColumn.PlannedOffsets.Clear(); RarePotionColumn.PlannedOffsets.Clear();
         var sw = Stopwatch.StartNew();
 
-        // Card/relic target resolution
-        int[]? rareOff = rt.HasValue ? FindCardOffsets(RareCardMap, rt.Value) : null;
-        int[]? uncOff = ut.HasValue ? FindCardOffsets(UncommonCardMap, ut.Value) : null;
-        int[]? comOff = ct.HasValue ? FindCardOffsets(CommonCardMap, ct.Value) : null;
-        int[]? relOff = relT != null && RelicMap.TryGetValue(relT, out var ro) ? new[] { ro } : null;
+        // Card/relic target resolution — only offsets >= current position
+        int[]? rareOff = rt.HasValue ? FindCardOffsets(RareCardMap, rt.Value).Where(o => o >= CardPredictionOffset).ToArray() : null;
+        int[]? uncOff = ut.HasValue ? FindCardOffsets(UncommonCardMap, ut.Value).Where(o => o >= CardPredictionOffset).ToArray() : null;
+        int[]? comOff = ct.HasValue ? FindCardOffsets(CommonCardMap, ct.Value).Where(o => o >= CardPredictionOffset).ToArray() : null;
+        int[]? relOff = relT != null && RelicMap.TryGetValue(relT, out var ro) ? ro.Where(o => o >= CardPredictionOffset).ToArray() : null;
 
         // === Potion prerequisite expansion ===
         var potionExact = new List<(ColumnType type, int globalIdx, PotionRarity rarity)>();
@@ -781,7 +807,7 @@ public class CrystalSpherePredictor
         if (potionTargets.Count > availPotions)
         {
             ModLogger.Info($"  Potion overflow: need {potionTargets.Count} reveals but only {availPotions} potion items left ({sw.Elapsed.TotalMilliseconds:F1}ms)");
-            return (false, "", I18n.Tr("error_gold_limit"));
+            return (false, "", string.Format(I18n.Tr("error_potion_overflow"), potionTargets.Count, availPotions));
         }
 
         // Build potion GridTargets (no fixed offset — auto-place at cur)
@@ -833,7 +859,7 @@ public class CrystalSpherePredictor
         if (best == null)
         {
             ModLogger.Info($"  OptPath result ({sw.Elapsed.TotalMilliseconds:F1}ms): INFEASIBLE (no path from offset {CardPredictionOffset})");
-            return (false, "", I18n.Tr("error_gold_limit"));
+            return (false, "", string.Format(I18n.Tr("error_no_path"), CardPredictionOffset));
         }
 
         var targetedTypes = new HashSet<ColumnType>(targetGroups.Select(g => g.t));
@@ -1080,10 +1106,10 @@ public class CrystalSpherePredictor
     /// Find the first offset where a specific card appears in the prediction map.
     /// </summary>
     private static int[] FindCardOffsets(
-        Dictionary<(string n, bool u), int> map, (string n, bool u) target)
+        Dictionary<(string n, bool u), List<int>> map, (string n, bool u) target)
     {
-        if (map.TryGetValue(target, out int offset))
-            return new[] { offset };
+        if (map.TryGetValue(target, out var offsets))
+            return offsets.ToArray();
         return Array.Empty<int>();
     }
 

@@ -223,10 +223,15 @@ public static partial class UnifiedPathFinder
         }
         indices.Reverse();
 
-        // Build filler list: stones first (in DP order), then gold fills
+        // Build filler list: stones first (in DP order), then gold fills.
+        // Gold grid items are treated as virtual gold (null type) — they
+        // don't appear as named columns in the path, just advance offset.
         var fillers = new List<(ColumnType? type, int benefit)>();
         foreach (int si in indices)
-            fillers.Add((pool[si].ColumnType, pool[si].RngBenefit));
+        {
+            var stone = pool[si];
+            fillers.Add((stone.IsGold ? null : stone.ColumnType, stone.RngBenefit));
+        }
 
         // Gold fills (null type = gold, used only for offset tracking in caller)
         int stoneOffset = indices.Sum(si => pool[si].RngBenefit);
