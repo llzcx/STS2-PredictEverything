@@ -322,6 +322,18 @@ public partial class InfoPanel : Control
         _i18nRegistry.Add((legend4, "legend_filter"));
         _footer.AddChild(legend4);
 
+        var legend5 = new RichTextLabel();
+        legend5.BbcodeEnabled = true;
+        legend5.FitContent = true;
+        legend5.ScrollActive = false;
+        legend5.AutowrapMode = TextServer.AutowrapMode.Word;
+        legend5.SizeFlagsHorizontal = SizeFlags.Fill;
+        legend5.Text = I18n.Tr("legend_substitute");
+        legend5.AddThemeFontSizeOverride("normal_font_size", 11);
+        legend5.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
+        _i18nRegistry.Add((legend5, "legend_substitute"));
+        _footer.AddChild(legend5);
+
         _root.AddChild(_footer);
 
         // ---- Size and positioning ----
