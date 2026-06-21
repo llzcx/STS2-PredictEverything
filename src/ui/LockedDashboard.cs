@@ -30,19 +30,20 @@ public partial class LockedDashboard : Control
     private bool _collapsed;
     private float _fullHeight;
 
-    // Panel palette (matches InfoPanel)
-    private static readonly Color DeepSpaceBg = new(0.02f, 0.03f, 0.06f, 0.96f);
-    private static readonly Color PanelBorder = new(0.118f, 0.141f, 0.200f, 1f);
-    private static readonly Color StarWhite = new(0.784f, 0.816f, 0.878f);
-    private static readonly Color Gold = new(0.722f, 0.588f, 0.290f);
-    private static readonly Color IceBlue = new(0.30f, 0.65f, 1f);
-    private static readonly Color LimeGreen = new(0.29f, 0.87f, 0.50f);
+    // Panel palette (matches InfoPanel via shared tokens)
+    private static readonly Color DeepSpaceBg = Colors.BgPrimary;
+    private static readonly Color PanelBorder = Colors.BorderPrimary;
+    private static readonly Color StarWhite = Colors.TextPrimary;
+    private static readonly Color Gold = Colors.PlannedColor;
+    private static readonly Color IceBlue = Colors.UncommonAccent;
+    private static readonly Color LimeGreen = Colors.RelicAccent;
 
-    // Column dot / accent colors
-    private static readonly Color RareColor = new(1f, 0.42f, 0.21f);
-    private static readonly Color UncommonColor = new(0.30f, 0.65f, 1f);
-    private static readonly Color CommonColor = new(0.784f, 0.816f, 0.878f);
-    private static readonly Color RelicColor = new(0.29f, 0.87f, 0.50f);
+    // Column dot / accent colors (from shared tokens)
+    private static readonly Color RareColor = Colors.RareAccent;
+    private static readonly Color UncommonColor = Colors.UncommonAccent;
+    private static readonly Color CommonColor = Colors.CommonAccent;
+    private static readonly Color RelicColor = Colors.RelicAccent;
+    private static readonly Color PotionColor = Colors.PotionAccent;
 
     // Column definitions: type, i18n key, accent color
     private static readonly (ColumnType type, string i18nKey, Color color)[] Columns =
@@ -51,8 +52,8 @@ public partial class LockedDashboard : Control
         (ColumnType.Uncommon, "locked_uncommon", UncommonColor),
         (ColumnType.Common, "locked_common", CommonColor),
         (ColumnType.Relic, "locked_relic", RelicColor),
-        (ColumnType.CommonPotion, "locked_common_potion_col", IceBlue),
-        (ColumnType.RarePotion, "locked_rare_potion_col", IceBlue),
+        (ColumnType.CommonPotion, "locked_common_potion_col", PotionColor),
+        (ColumnType.RarePotion, "locked_rare_potion_col", PotionColor),
     };
 
     // I18n registry for persistent labels updated on language switch
@@ -106,7 +107,7 @@ public partial class LockedDashboard : Control
         // Top accent line (ice-blue to differentiate from InfoPanel)
         var accentLine = new ColorRect();
         accentLine.SetAnchorsPreset(LayoutPreset.TopWide);
-        accentLine.Color = IceBlue;
+        accentLine.Color = Colors.LockedColor;
         accentLine.CustomMinimumSize = new Vector2(0, 2);
         accentLine.OffsetLeft = 8;
         accentLine.OffsetRight = -8;
@@ -146,7 +147,7 @@ public partial class LockedDashboard : Control
         _root.AddChild(_titleBar);
 
         // ---- Progress summary (always visible) ----
-        _progressLabel = CreateLabel("", 12, new Color(0.6f, 0.6f, 0.6f));
+        _progressLabel = CreateLabel("", 12, Colors.TextSecondary);
         _progressLabel.AddThemeFontSizeOverride("font_size", 12);
         _root.AddChild(_progressLabel);
 
@@ -169,25 +170,25 @@ public partial class LockedDashboard : Control
 
         // Grid inventory section (shows below column rows)
         _content.AddChild(new HSeparator());
-        _inventoryTitle = CreateLabel(I18n.Tr("inventory_title"), 12, new Color(0.6f, 0.6f, 0.6f));
+        _inventoryTitle = CreateLabel(I18n.Tr("inventory_title"), 12, Colors.TextSecondary);
         _inventoryTitle.AddThemeFontSizeOverride("font_size", 14);
         _content.AddChild(_inventoryTitle);
 
         // Inventory header row
         var invHeader = new HBoxContainer();
         invHeader.AddThemeConstantOverride("separation", 6);
-        var nameHeaderLabel = CreateLabel(I18n.Tr("inventory_col_item"), 10, new Color(0.5f, 0.5f, 0.5f));
+        var nameHeaderLabel = CreateLabel(I18n.Tr("inventory_col_item"), 10, Colors.TextDim);
         nameHeaderLabel.CustomMinimumSize = new Vector2(80, 0);
         invHeader.AddChild(nameHeaderLabel);
-        var hRemain = CreateLabel("剩余", 10, new Color(0.5f, 0.5f, 0.5f));
+        var hRemain = CreateLabel("剩余", 10, Colors.TextDim);
         hRemain.CustomMinimumSize = new Vector2(36, 0);
         hRemain.HorizontalAlignment = HorizontalAlignment.Center;
         invHeader.AddChild(hRemain);
-        var hSize = CreateLabel("格子", 10, new Color(0.5f, 0.5f, 0.5f));
+        var hSize = CreateLabel("格子", 10, Colors.TextDim);
         hSize.CustomMinimumSize = new Vector2(32, 0);
         hSize.HorizontalAlignment = HorizontalAlignment.Center;
         invHeader.AddChild(hSize);
-        var hOff = CreateLabel("偏移", 10, new Color(0.5f, 0.5f, 0.5f));
+        var hOff = CreateLabel("偏移", 10, Colors.TextDim);
         hOff.CustomMinimumSize = new Vector2(28, 0);
         hOff.HorizontalAlignment = HorizontalAlignment.Center;
         invHeader.AddChild(hOff);
@@ -315,8 +316,8 @@ public partial class LockedDashboard : Control
                         string name = c.Name ?? "?";
                         if (c.Upgraded && !name.EndsWith("+")) name += "+";
                         return c.Upgraded
-                            ? $"[b][color=#66FF66]{name}[/color][/b]"
-                            : $"[color=#C8D0E0]{name}[/color]";
+                            ? $"[b][color=#A0D636]{name}[/color][/b]"
+                            : $"[color=#CCC8B7]{name}[/color]";
                     });
                     var rtl = new RichTextLabel();
                     rtl.BbcodeEnabled = true;
@@ -402,9 +403,9 @@ public partial class LockedDashboard : Control
             row.AddChild(sizeLabel);
 
             // RNG benefit
-            Color benefitColor = entry.RngBenefit >= 6 ? LimeGreen
-                : entry.RngBenefit > 0 ? IceBlue
-                : new Color(1f, 0.28f, 0.28f);
+            Color benefitColor = entry.RngBenefit >= 6 ? Colors.RelicAccent
+                : entry.RngBenefit > 0 ? Colors.UncommonAccent
+                : Colors.CurseColor;
             var benefitLabel = CreateLabel(entry.BenefitLabel, 12, benefitColor);
             benefitLabel.HorizontalAlignment = HorizontalAlignment.Center;
             benefitLabel.CustomMinimumSize = new Vector2(28, 0);
@@ -436,7 +437,7 @@ public partial class LockedDashboard : Control
             _inventoryContainer.AddChild(row);
         }
 
-        AddSumRow("inventory_total_benefit", totalBenefit, new Color(0.29f, 0.87f, 0.50f));
+        AddSumRow("inventory_total_benefit", totalBenefit, Colors.RelicAccent);
         AddSumRow("inventory_benefit_1", benefit1, IceBlue);
         AddSumRow("inventory_benefit_6", benefit6, LimeGreen);
     }

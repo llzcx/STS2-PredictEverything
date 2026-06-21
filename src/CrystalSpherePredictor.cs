@@ -1088,16 +1088,16 @@ public class CrystalSpherePredictor
             var label = key.label;
             Color labelColor = label switch
             {
-                _ when label == I18n.Tr("col_rare") => new Color(1f, 0.42f, 0.21f),
-                _ when label == I18n.Tr("col_uncommon") => new Color(0.30f, 0.65f, 1f),
-                _ when label == I18n.Tr("col_common") => new Color(0.784f, 0.816f, 0.878f),
-                _ when label == I18n.Tr("col_relic") => new Color(0.29f, 0.87f, 0.50f),
-                _ when label == I18n.Tr("col_common_potion") => new Color(0.30f, 0.65f, 1f),
-                _ when label == I18n.Tr("col_rare_potion") => new Color(0.30f, 0.65f, 1f),
-                _ when label == I18n.Tr("curse_label") => new Color(1f, 0.28f, 0.28f),
-                _ when label == I18n.Tr("gold_small_label") => new Color(0.722f, 0.588f, 0.290f),
-                _ when label == I18n.Tr("gold_big_label") => new Color(0.722f, 0.588f, 0.290f),
-                _ => new Color(0.784f, 0.816f, 0.878f),
+                _ when label == I18n.Tr("col_rare") => Colors.RareAccent,
+                _ when label == I18n.Tr("col_uncommon") => Colors.UncommonAccent,
+                _ when label == I18n.Tr("col_common") => Colors.CommonAccent,
+                _ when label == I18n.Tr("col_relic") => Colors.RelicAccent,
+                _ when label == I18n.Tr("col_common_potion") => Colors.PotionAccent,
+                _ when label == I18n.Tr("col_rare_potion") => Colors.PotionAccent,
+                _ when label == I18n.Tr("curse_label") => Colors.CurseColor,
+                _ when label == I18n.Tr("gold_small_label") => Colors.PlannedColor,
+                _ when label == I18n.Tr("gold_big_label") => Colors.PlannedColor,
+                _ => Colors.TextPrimary,
             };
             result.Add(new GridInventoryEntry
             {

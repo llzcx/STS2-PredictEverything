@@ -12,6 +12,6 @@ public class GridInventoryEntry
     public int Remaining;
     public string CellSize = "";
     public int RngBenefit;
-    public Color LabelColor = Colors.White;
+    public Color LabelColor = new(1, 1, 1);
     public string BenefitLabel => RngBenefit == 0 ? "0" : $"+{RngBenefit}";
 }

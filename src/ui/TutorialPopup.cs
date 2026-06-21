@@ -11,10 +11,10 @@ namespace PredictEverything;
 public partial class TutorialPopup : Control
 {
     // Panel palette (matches InfoPanel)
-    private static readonly Color DeepSpaceBg = new(0.043f, 0.055f, 0.102f, 0.95f);
-    private static readonly Color PanelBorder = new(0.118f, 0.141f, 0.200f, 1f);
-    private static readonly Color StarWhite = new(0.784f, 0.816f, 0.878f);
-    private static readonly Color WarmOrange = new(1f, 0.42f, 0.21f);
+    private static readonly Color DeepSpaceBg = Colors.BgPrimary;
+    private static readonly Color PanelBorder = Colors.BorderPrimary;
+    private static readonly Color StarWhite = Colors.TextPrimary;
+    private static readonly Color WarmOrange = Colors.RareAccent;
 
     private const float ModalW = 540f;
     private const float ModalH = 520f;
@@ -126,22 +126,22 @@ public partial class TutorialPopup : Control
         // Button styling
         var btnNormal = new StyleBoxFlat
         {
-            BgColor = new Color(1f, 1f, 1f, 0.12f),
+            BgColor = new Color(1f, 1f, 1f, 0.08f),
             BorderWidthLeft = 1,
             BorderWidthRight = 1,
             BorderWidthTop = 1,
             BorderWidthBottom = 1,
-            BorderColor = new Color(1f, 1f, 1f, 0.25f),
+            BorderColor = new Color(1f, 1f, 1f, 0.20f),
         };
         btnNormal.SetCornerRadiusAll(6);
         var btnHover = new StyleBoxFlat
         {
-            BgColor = new Color(1f, 1f, 1f, 0.20f),
+            BgColor = new Color(1f, 1f, 1f, 0.14f),
             BorderWidthLeft = 1,
             BorderWidthRight = 1,
             BorderWidthTop = 1,
             BorderWidthBottom = 1,
-            BorderColor = new Color(1f, 1f, 1f, 0.35f),
+            BorderColor = new Color(1f, 1f, 1f, 0.30f),
         };
         btnHover.SetCornerRadiusAll(6);
         gotItBtn.AddThemeStyleboxOverride("normal", btnNormal);

@@ -18,13 +18,13 @@ public partial class PreviewPopup : Control
     private Vector2 _dragStart;
 
     // Panel palette (matches InfoPanel / LockedDashboard)
-    private static readonly Color DeepSpaceBg = new(0.043f, 0.055f, 0.102f, 0.95f);
-    private static readonly Color PanelBorder = new(0.118f, 0.141f, 0.200f, 1f);
-    private static readonly Color StarWhite = new(0.784f, 0.816f, 0.878f);
-    private static readonly Color LimeGreen = new(0.29f, 0.87f, 0.50f);
-    private static readonly Color WarmOrange = new(1f, 0.42f, 0.21f);
-    private static readonly Color Gold = new(0.722f, 0.588f, 0.290f);
-    private static readonly Color IceBlue = new(0.30f, 0.65f, 1f);
+    private static readonly Color DeepSpaceBg = Colors.BgPrimary;
+    private static readonly Color PanelBorder = Colors.BorderPrimary;
+    private static readonly Color StarWhite = Colors.TextPrimary;
+    private static readonly Color LimeGreen = Colors.RelicAccent;
+    private static readonly Color WarmOrange = Colors.RareAccent;
+    private static readonly Color Gold = Colors.PlannedColor;
+    private static readonly Color IceBlue = Colors.UncommonAccent;
 
     private const float PanelW = 380f;
     private const float PanelMinH = 180f;

@@ -39,28 +39,19 @@ public partial class InfoPanel : Control
     private VBoxContainer _footer = null!;
     private float _fullHeight;
 
-    // Row highlight colors
-    private static readonly Color PlannedColor = new(1f, 0.84f, 0f, 0.7f);
-    private static readonly Color PlannedBorder = new(1f, 0.7f, 0f, 0.9f);
-    private static readonly Color LockedColor = new(0f, 0.8f, 0f, 0.45f);
-    private static readonly Color DisabledColor = new(0.25f, 0.18f, 0.18f, 0.55f);
-    // Per-column reserved colors (matching column themes)
-    private static readonly Color RareReservedColor = new(0.45f, 0.15f, 0.08f, 0.5f);
-    private static readonly Color UncommonReservedColor = new(0.10f, 0.25f, 0.45f, 0.5f);
-    private static readonly Color CommonReservedColor = new(0.20f, 0.20f, 0.25f, 0.55f);
-    private static readonly Color RelicReservedColor = new(0.10f, 0.38f, 0.18f, 0.5f);
-    private static readonly Color PotionReservedColor = new(0.12f, 0.30f, 0.42f, 0.5f);
-    private static readonly Color MixedReservedColor = new(0.35f, 0.28f, 0.20f, 0.5f);
-    private static readonly Color CurrentHighlightColor = new(1f, 1f, 1f, 0.2f);
-
-    // Panel palette (matches RoutePlanner aesthetic)
-    private static readonly Color DeepSpaceBg = new(0.043f, 0.055f, 0.102f, 0.92f);
-    private static readonly Color PanelBorder = new(0.118f, 0.141f, 0.200f, 1f);
-    private static readonly Color StarWhite = new(0.784f, 0.816f, 0.878f);
-    private static readonly Color Gold = new(0.722f, 0.588f, 0.290f);
-    private static readonly Color WarmOrange = new(1f, 0.42f, 0.21f);
-    private static readonly Color IceBlue = new(0.30f, 0.65f, 1f);
-    private static readonly Color LimeGreen = new(0.29f, 0.87f, 0.50f);
+    // Row highlight colours (derived from shared tokens)
+    private static readonly Color PlannedColor = new(Colors.PlannedColor.R, Colors.PlannedColor.G, Colors.PlannedColor.B, 0.45f);
+    private static readonly Color PlannedBorder = new(Colors.PlannedColor.R, Colors.PlannedColor.G, Colors.PlannedColor.B, 0.55f);
+    private static readonly Color LockedColorBg = new(Colors.LockedColor.R, Colors.LockedColor.G, Colors.LockedColor.B, 0.40f);
+    private static readonly Color DisabledColor = new(0.118f, 0.110f, 0.102f, 0.50f);
+    // Per-column reserved colours (derived from column accents)
+    private static readonly Color RareReservedColor = new(0.329f, 0.165f, 0.067f, 0.45f);
+    private static readonly Color UncommonReservedColor = new(0.098f, 0.169f, 0.259f, 0.45f);
+    private static readonly Color CommonReservedColor = new(0.161f, 0.173f, 0.192f, 0.45f);
+    private static readonly Color RelicReservedColor = new(0.082f, 0.267f, 0.176f, 0.45f);
+    private static readonly Color PotionReservedColor = new(0.173f, 0.129f, 0.259f, 0.45f);
+    private static readonly Color MixedReservedColor = new(0.220f, 0.180f, 0.161f, 0.50f);
+    private static readonly Color CurrentHighlightColor = new(1f, 1f, 1f, 0.18f);
 
     private static readonly ColumnType[] Cols =
         { ColumnType.Rare, ColumnType.Uncommon, ColumnType.Common, ColumnType.Relic, ColumnType.CommonPotion, ColumnType.RarePotion };
@@ -111,20 +102,20 @@ public partial class InfoPanel : Control
         var bg = new Panel();
         bg.SetAnchorsPreset(LayoutPreset.FullRect);
         var bgStyle = new StyleBoxFlat();
-        bgStyle.BgColor = DeepSpaceBg;
+        bgStyle.BgColor = Colors.BgPrimary;
         bgStyle.SetCornerRadiusAll(12);
         bgStyle.BorderWidthLeft = 1;
         bgStyle.BorderWidthRight = 1;
         bgStyle.BorderWidthTop = 1;
         bgStyle.BorderWidthBottom = 1;
-        bgStyle.BorderColor = PanelBorder;
+        bgStyle.BorderColor = Colors.BorderPrimary;
         bg.AddThemeStyleboxOverride("panel", bgStyle);
         AddChild(bg);
 
         // Top accent line
         var accentLine = new ColorRect();
         accentLine.SetAnchorsPreset(LayoutPreset.TopWide);
-        accentLine.Color = WarmOrange;
+        accentLine.Color = Colors.RareAccent;
         accentLine.CustomMinimumSize = new Vector2(0, 2);
         accentLine.OffsetLeft = 8;
         accentLine.OffsetRight = -8;
@@ -146,7 +137,7 @@ public partial class InfoPanel : Control
         _titleBar.MouseFilter = MouseFilterEnum.Stop;
         _titleBar.AddThemeConstantOverride("separation", 6);
 
-        _titleLabel = CreateLocalizedLabel("panel_title", 22, StarWhite);
+        _titleLabel = CreateLocalizedLabel("panel_title", 22, Colors.TextPrimary);
         _titleLabel.AddThemeFontSizeOverride("font_size", 18);
         _titleBar.AddChild(_titleLabel);
 
@@ -182,7 +173,7 @@ public partial class InfoPanel : Control
         _headerRow.AddThemeConstantOverride("separation", 1);
 
         // Narrow offset column header
-        var offsetHeader = CreateLabel("#", 9, new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.4f));
+        var offsetHeader = CreateLabel("#", 9, new Color(Colors.TextPrimary.R, Colors.TextPrimary.G, Colors.TextPrimary.B, 0.4f));
         offsetHeader.CustomMinimumSize = new Vector2(24, 0);
         offsetHeader.HorizontalAlignment = HorizontalAlignment.Center;
         _headerRow.AddChild(offsetHeader);
@@ -206,7 +197,7 @@ public partial class InfoPanel : Control
             headerLabel.HorizontalAlignment = HorizontalAlignment.Center;
             headerLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             headerLabel.AddThemeFontSizeOverride("normal_font_size", 13);
-            headerLabel.AddThemeColorOverride("default_color", StarWhite);
+            headerLabel.AddThemeColorOverride("default_color", Colors.TextPrimary);
             headerLabel.MouseFilter = MouseFilterEnum.Pass;
             _headerLabels[col] = headerLabel;
             _i18nRegistry.Add((headerLabel, key));
@@ -245,7 +236,7 @@ public partial class InfoPanel : Control
         _planLabel.ScrollActive = false;
         _planLabel.MouseFilter = MouseFilterEnum.Pass;
         _planLabel.AddThemeFontSizeOverride("normal_font_size", 13);
-        _planLabel.AddThemeColorOverride("default_color", StarWhite);
+        _planLabel.AddThemeColorOverride("default_color", Colors.TextPrimary);
         _root.AddChild(_planLabel);
 
         // ---- Scrollable rows area ----
@@ -259,7 +250,7 @@ public partial class InfoPanel : Control
         var vScroll = _scroll.GetVScrollBar();
         vScroll.CustomMinimumSize = new Vector2(4, 0);
         vScroll.AddThemeStyleboxOverride("scroll", new StyleBoxFlat { BgColor = new Color(0, 0, 0, 0) });
-        var grabber = new StyleBoxFlat { BgColor = new Color(1f, 1f, 1f, 0.15f) };
+        var grabber = new StyleBoxFlat { BgColor = new Color(1f, 1f, 1f, 0.12f) };
         grabber.SetCornerRadiusAll(2);
         vScroll.AddThemeStyleboxOverride("grabber", grabber);
         var grabberHover = new StyleBoxFlat { BgColor = new Color(1f, 1f, 1f, 0.25f) };
@@ -283,9 +274,9 @@ public partial class InfoPanel : Control
         legend1.ScrollActive = false;
         legend1.AutowrapMode = TextServer.AutowrapMode.Word;
         legend1.SizeFlagsHorizontal = SizeFlags.Fill;
-        legend1.Text = $"[color=#66FF66][b]✦[/b][/color] = {I18n.Tr("legend_upgraded")}";
+        legend1.Text = $"[color=#A0D636][b]✦[/b][/color] = {I18n.Tr("legend_upgraded")}";
         legend1.AddThemeFontSizeOverride("normal_font_size", 11);
-        legend1.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
+        legend1.AddThemeColorOverride("default_color", Colors.TextSecondary);
         _footer.AddChild(legend1);
 
         var legend2 = new RichTextLabel();
@@ -296,7 +287,7 @@ public partial class InfoPanel : Control
         legend2.SizeFlagsHorizontal = SizeFlags.Fill;
         legend2.Text = I18n.Tr("legend_costs");
         legend2.AddThemeFontSizeOverride("normal_font_size", 11);
-        legend2.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
+        legend2.AddThemeColorOverride("default_color", Colors.TextSecondary);
         _footer.AddChild(legend2);
 
         var legend3 = new RichTextLabel();
@@ -307,7 +298,7 @@ public partial class InfoPanel : Control
         legend3.SizeFlagsHorizontal = SizeFlags.Fill;
         legend3.Text = I18n.Tr("legend_order");
         legend3.AddThemeFontSizeOverride("normal_font_size", 11);
-        legend3.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
+        legend3.AddThemeColorOverride("default_color", Colors.TextSecondary);
         _footer.AddChild(legend3);
 
         var legend4 = new RichTextLabel();
@@ -318,7 +309,7 @@ public partial class InfoPanel : Control
         legend4.SizeFlagsHorizontal = SizeFlags.Fill;
         legend4.Text = I18n.Tr("legend_filter");
         legend4.AddThemeFontSizeOverride("normal_font_size", 11);
-        legend4.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
+        legend4.AddThemeColorOverride("default_color", Colors.TextSecondary);
         _i18nRegistry.Add((legend4, "legend_filter"));
         _footer.AddChild(legend4);
 
@@ -330,7 +321,7 @@ public partial class InfoPanel : Control
         legend5.SizeFlagsHorizontal = SizeFlags.Fill;
         legend5.Text = I18n.Tr("legend_substitute");
         legend5.AddThemeFontSizeOverride("normal_font_size", 11);
-        legend5.AddThemeColorOverride("default_color", new Color(0.6f, 0.6f, 0.6f));
+        legend5.AddThemeColorOverride("default_color", Colors.TextSecondary);
         _i18nRegistry.Add((legend5, "legend_substitute"));
         _footer.AddChild(legend5);
 
@@ -367,10 +358,10 @@ public partial class InfoPanel : Control
 
         // Drag support
         _dragHandler = new DragHandler(this, _titleBar,
-            onDragStart: () => _titleLabel.AddThemeColorOverride("font_color", Gold),
+            onDragStart: () => _titleLabel.AddThemeColorOverride("font_color", Colors.PlannedColor),
             onDragEnd: () =>
             {
-                _titleLabel.AddThemeColorOverride("font_color", StarWhite);
+                _titleLabel.AddThemeColorOverride("font_color", Colors.TextPrimary);
                 var gpos = GlobalPosition;
                 float pw = OffsetRight - OffsetLeft;
                 float ph = OffsetBottom - OffsetTop;
@@ -421,7 +412,7 @@ public partial class InfoPanel : Control
             Color rowColor;
             if (IsRowLocked(row))
             {
-                rowColor = LockedColor;
+                rowColor = LockedColorBg;
             }
             else if (row < currentOffset)
             {
@@ -438,7 +429,7 @@ public partial class InfoPanel : Control
 
             // Offset number label
             var offsetLabel = CreateLabel(row.ToString(), 9,
-                row == currentOffset ? StarWhite : new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.4f));
+                row == currentOffset ? Colors.TextPrimary : new Color(Colors.TextPrimary.R, Colors.TextPrimary.G, Colors.TextPrimary.B, 0.4f));
             offsetLabel.CustomMinimumSize = new Vector2(24, 0);
             offsetLabel.HorizontalAlignment = HorizontalAlignment.Center;
             offsetLabel.VerticalAlignment = VerticalAlignment.Center;
@@ -480,7 +471,7 @@ public partial class InfoPanel : Control
     /// <summary>
     /// Build a single cell for a column at a given row offset.
     /// </summary>
-    private static readonly Color CellPlannedBg = new(1f, 0.75f, 0.1f, 0.6f);
+    private static readonly Color CellPlannedBg = new(Colors.PlannedColor.R, Colors.PlannedColor.G, Colors.PlannedColor.B, 0.35f);
 
     private Control BuildCell(int row, ColumnType col, OffsetPrediction pred)
     {
@@ -503,13 +494,13 @@ public partial class InfoPanel : Control
         cellBg.BorderColor = new Color(0, 0, 0, 0);
         if (isLockedCell)
         {
-            cellBg.BgColor = LockedColor;
-            cellBg.BorderColor = new Color(0f, 0.7f, 0f, 0.6f);
+            cellBg.BgColor = LockedColorBg;
+            cellBg.BorderColor = new Color(Colors.LockedColor.R, Colors.LockedColor.G, Colors.LockedColor.B, 0.55f);
         }
         else if (isPlannedCell)
         {
             cellBg.BgColor = CellPlannedBg;
-            cellBg.BorderColor = new Color(1f, 0.6f, 0f, 0.8f);
+            cellBg.BorderColor = new Color(Colors.PlannedColor.R, Colors.PlannedColor.G, Colors.PlannedColor.B, 0.55f);
         }
 
         var wrapper = new PanelContainer();
@@ -523,7 +514,7 @@ public partial class InfoPanel : Control
         {
             var relic = pred.Relic;
             string relicName = relic?.Name ?? "?";
-            var relicLabel = CreateLabel(relicName, 12, StarWhite);
+            var relicLabel = CreateLabel(relicName, 12, Colors.TextPrimary);
             relicLabel.HorizontalAlignment = HorizontalAlignment.Center;
             relicLabel.AutowrapMode = TextServer.AutowrapMode.Word;
             relicLabel.MouseFilter = MouseFilterEnum.Pass;
@@ -557,7 +548,7 @@ public partial class InfoPanel : Control
                         rtl.HorizontalAlignment = HorizontalAlignment.Center;
                         rtl.AutowrapMode = TextServer.AutowrapMode.Word;
                         rtl.MouseFilter = MouseFilterEnum.Pass;
-                        rtl.AddThemeColorOverride("default_color", IceBlue);
+                        rtl.AddThemeColorOverride("default_color", Colors.UncommonAccent);
                         rtl.AddThemeFontSizeOverride("normal_font_size", 12);
                         rtl.AddThemeFontSizeOverride("bold_font_size", 12);
                         inner.AddChild(rtl);
@@ -566,7 +557,7 @@ public partial class InfoPanel : Control
                     {
                         var rtl = new RichTextLabel();
                         rtl.BbcodeEnabled = true;
-                        rtl.Text = $"[b][color=#FFB830]{name}[/color][/b]";
+                        rtl.Text = $"[b][color=#E8A833]{name}[/color][/b]";
                         rtl.FitContent = true;
                         rtl.ScrollActive = false;
                         rtl.HorizontalAlignment = HorizontalAlignment.Center;
@@ -578,7 +569,7 @@ public partial class InfoPanel : Control
                     }
                     else
                     {
-                        var lbl = CreateLabel(name, 12, new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.85f));
+                        var lbl = CreateLabel(name, 12, new Color(Colors.TextPrimary.R, Colors.TextPrimary.G, Colors.TextPrimary.B, 0.85f));
                         lbl.HorizontalAlignment = HorizontalAlignment.Center;
                         lbl.AutowrapMode = TextServer.AutowrapMode.Word;
                         lbl.MouseFilter = MouseFilterEnum.Pass;
@@ -613,7 +604,7 @@ public partial class InfoPanel : Control
                         rtl.HorizontalAlignment = HorizontalAlignment.Center;
                         rtl.AutowrapMode = TextServer.AutowrapMode.Word;
                         rtl.MouseFilter = MouseFilterEnum.Pass;
-                        rtl.AddThemeColorOverride("default_color", IceBlue);
+                        rtl.AddThemeColorOverride("default_color", Colors.UncommonAccent);
                         rtl.AddThemeFontSizeOverride("normal_font_size", 12);
                         rtl.AddThemeFontSizeOverride("bold_font_size", 12);
                         inner.AddChild(rtl);
@@ -622,7 +613,7 @@ public partial class InfoPanel : Control
                     {
                         var rtl = new RichTextLabel();
                         rtl.BbcodeEnabled = true;
-                        rtl.Text = $"[b][color=#FFB830]{name}[/color][/b]";
+                        rtl.Text = $"[b][color=#E8A833]{name}[/color][/b]";
                         rtl.FitContent = true;
                         rtl.ScrollActive = false;
                         rtl.HorizontalAlignment = HorizontalAlignment.Center;
@@ -634,7 +625,7 @@ public partial class InfoPanel : Control
                     }
                     else
                     {
-                        var lbl = CreateLabel(name, 12, new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.85f));
+                        var lbl = CreateLabel(name, 12, new Color(Colors.TextPrimary.R, Colors.TextPrimary.G, Colors.TextPrimary.B, 0.85f));
                         lbl.HorizontalAlignment = HorizontalAlignment.Center;
                         lbl.AutowrapMode = TextServer.AutowrapMode.Word;
                         lbl.MouseFilter = MouseFilterEnum.Pass;
@@ -660,7 +651,7 @@ public partial class InfoPanel : Control
                 {
                     var rtl = new RichTextLabel();
                     rtl.BbcodeEnabled = true;
-                    rtl.Text = $"[b][color=#66FF66]{cardName}[/color][/b]";
+                    rtl.Text = $"[b][color=#A0D636]{cardName}[/color][/b]";
                     rtl.FitContent = true;
                     rtl.ScrollActive = false;
                     rtl.HorizontalAlignment = HorizontalAlignment.Center;
@@ -674,7 +665,7 @@ public partial class InfoPanel : Control
                 else
                 {
                     var lbl = CreateLabel(cardName, 12,
-                        new Color(StarWhite.R, StarWhite.G, StarWhite.B, 0.85f));
+                        new Color(Colors.TextPrimary.R, Colors.TextPrimary.G, Colors.TextPrimary.B, 0.85f));
                     lbl.HorizontalAlignment = HorizontalAlignment.Center;
                     lbl.AutowrapMode = TextServer.AutowrapMode.Word;
                     lbl.ClipContents = true;
@@ -751,7 +742,7 @@ public partial class InfoPanel : Control
 
         if (!feasible && error != null)
         {
-            _planLabel.Text = $"[color=#FF6B35]{error}[/color]";
+            _planLabel.Text = $"[color=#E04040]{error}[/color]";
         }
         else if (string.IsNullOrEmpty(sequence))
         {
@@ -759,12 +750,12 @@ public partial class InfoPanel : Control
         }
         else if (sequence == I18n.Tr("plan_all_resolved"))
         {
-            _planLabel.Text = $"[color=#7DE2C8]{sequence}[/color]";
+            _planLabel.Text = $"[color=#2EC4B6]{sequence}[/color]";
         }
         else
         {
             if (stepCount > 8)
-                _planLabel.Text = $"[color=#FFB830]{sequence}  — {I18n.Tr("plan_long_warning")}[/color]";
+                _planLabel.Text = $"[color=#E8A833]{sequence}  — {I18n.Tr("plan_long_warning")}[/color]";
             else
                 _planLabel.Text = sequence;
         }
@@ -982,7 +973,7 @@ public partial class InfoPanel : Control
             _predictor.CommonPotionColumn.PlannedOffsets.Clear();
             _predictor.RarePotionColumn.PlannedOffsets.Clear();
             if (_planLabel != null)
-                _planLabel.Text = $"[color=#FF6B35]{I18n.Tr("error_potion_index_conflict")}[/color]";
+                _planLabel.Text = $"[color=#E04040]{I18n.Tr("error_potion_index_conflict")}[/color]";
             Refresh();
             return;
         }
@@ -1019,7 +1010,7 @@ public partial class InfoPanel : Control
         if (_planLabel != null)
         {
             if (!feasible && error != null)
-                _planLabel.Text = $"[color=#FF6B35]{error}[/color]";
+                _planLabel.Text = $"[color=#E04040]{error}[/color]";
             else if (!string.IsNullOrEmpty(sequence))
                 _planLabel.Text = sequence;
             else if (rareT == null && uncT == null && comT == null && relT == null && commonPotT == null && rarePotT == null)
@@ -1048,7 +1039,7 @@ public partial class InfoPanel : Control
             else if (control is Button button)
                 button.Text = I18n.Tr(key);
             else if (control is RichTextLabel rtl)
-                rtl.Text = $"[color=#C8D0E0]{I18n.Tr(key)}[/color]";
+                rtl.Text = $"[color=#CCC8B7]{I18n.Tr(key)}[/color]";
         }
         RefreshHeaders();
         Refresh();
@@ -1075,8 +1066,8 @@ public partial class InfoPanel : Control
                 string name = I18n.Tr(key);
                 bool locked = _predictor.IsColumnLocked(col);
                 label.Text = locked
-                    ? $"[color=#33CC66]{name} [/color][color=#66FF66]🔒[/color]"
-                    : $"[color=#C8D0E0]{name}[/color]";
+                    ? $"[color=#2EC4B6]{name} [/color][color=#A0D636]🔒[/color]"
+                    : $"[color=#CCC8B7]{name}[/color]";
             }
         }
     }
@@ -1164,14 +1155,14 @@ public partial class InfoPanel : Control
         btn.CustomMinimumSize = new Vector2(22, 22);
         btn.AddThemeFontSizeOverride("font_size", fontSize);
         var normalStyle = new StyleBoxFlat { BgColor = new Color(0, 0, 0, 0) };
-        var hoverStyle = new StyleBoxFlat { BgColor = new Color(1f, 1f, 1f, 0.1f) };
+        var hoverStyle = new StyleBoxFlat { BgColor = new Color(1f, 1f, 1f, 0.08f) };
         hoverStyle.SetCornerRadiusAll(4);
-        var pressedStyle = new StyleBoxFlat { BgColor = new Color(1f, 1f, 1f, 0.2f) };
+        var pressedStyle = new StyleBoxFlat { BgColor = new Color(1f, 1f, 1f, 0.14f) };
         pressedStyle.SetCornerRadiusAll(4);
         btn.AddThemeStyleboxOverride("normal", normalStyle);
         btn.AddThemeStyleboxOverride("hover", hoverStyle);
         btn.AddThemeStyleboxOverride("pressed", pressedStyle);
-        btn.AddThemeStyleboxOverride("focus", normalStyle);
+        btn.AddThemeStyleboxOverride("focus", new StyleBoxFlat { BgColor = new Color(1f, 1f, 1f, 0.05f) });
         return btn;
     }
 

@@ -21,9 +21,9 @@ public static class HoverTooltip
     private static readonly FieldInfo? _autoSizeField = typeof(MegaRichTextLabel)
         .GetField("_isAutoSizeEnabled", BindingFlags.NonPublic | BindingFlags.Instance);
 
-    private static readonly Color CardBg = new(0.08f, 0.09f, 0.16f, 0.98f);
-    private static readonly Color GoldBorder = new(0.722f, 0.588f, 0.290f, 0.6f);
-    private static readonly Color Green = new(0.4f, 1f, 0.4f);
+    private static readonly Color CardBg = Colors.BgSecondary;
+    private static readonly Color GoldBorder = new(Colors.TextPrimary.R, Colors.TextPrimary.G, Colors.TextPrimary.B, 0.20f);
+    private static readonly Color Green = Colors.UpgradedColor;
     private const int PanelWidth = 420;
 
     public static void Init(Control screen) { _parent = screen; }
@@ -42,11 +42,11 @@ public static class HoverTooltip
 
         var costBox = new Label();
         costBox.Text = card.EnergyCost?.Canonical.ToString() ?? "?";
-        costBox.AddThemeColorOverride("font_color", Colors.White);
+        costBox.AddThemeColorOverride("font_color", new Color(1, 1, 1));
         costBox.AddThemeFontSizeOverride("font_size", 20);
         costBox.HorizontalAlignment = HorizontalAlignment.Center;
         costBox.CustomMinimumSize = new Vector2(28, 28);
-        var orb = new StyleBoxFlat { BgColor = new Color(0.1f, 0.12f, 0.2f, 1f) };
+        var orb = new StyleBoxFlat { BgColor = new Color(0.082f, 0.094f, 0.149f, 1f) };
         orb.SetCornerRadiusAll(14);
         costBox.AddThemeStyleboxOverride("normal", orb);
         header.AddChild(costBox);
@@ -55,7 +55,7 @@ public static class HoverTooltip
         if (prediction.Upgraded && !name.EndsWith("+")) name += "+";
         var nameLabel = new Label();
         nameLabel.Text = name;
-        nameLabel.AddThemeColorOverride("font_color", prediction.Upgraded ? Green : new Color(0.91f, 0.86f, 0.75f));
+        nameLabel.AddThemeColorOverride("font_color", prediction.Upgraded ? Colors.UpgradedColor : Colors.TextPrimary);
         nameLabel.AddThemeFontSizeOverride("font_size", 15);
         header.AddChild(nameLabel);
         vbox.AddChild(header);
@@ -65,7 +65,7 @@ public static class HoverTooltip
         if (prediction.Upgraded) typeText += "  ⬆";
         var typeLabel = new Label();
         typeLabel.Text = typeText;
-        typeLabel.AddThemeColorOverride("font_color", prediction.Upgraded ? Green : new Color(0.65f, 0.65f, 0.65f));
+        typeLabel.AddThemeColorOverride("font_color", prediction.Upgraded ? Colors.UpgradedColor : Colors.TextSecondary);
         typeLabel.AddThemeFontSizeOverride("font_size", 11);
         vbox.AddChild(typeLabel);
 
@@ -119,13 +119,13 @@ public static class HoverTooltip
 
         var nameLabel = new Label();
         nameLabel.Text = $"{prediction.Name}";
-        nameLabel.AddThemeColorOverride("font_color", new Color(0.91f, 0.86f, 0.75f));
+        nameLabel.AddThemeColorOverride("font_color", Colors.TextPrimary);
         nameLabel.AddThemeFontSizeOverride("font_size", 15);
         vbox.AddChild(nameLabel);
 
         var rarityLabel = new Label();
         rarityLabel.Text = prediction.RarityLabel;
-        rarityLabel.AddThemeColorOverride("font_color", new Color(0.722f, 0.588f, 0.290f));
+        rarityLabel.AddThemeColorOverride("font_color", Colors.RelicAccent);
         rarityLabel.AddThemeFontSizeOverride("font_size", 11);
         vbox.AddChild(rarityLabel);
 
@@ -151,7 +151,7 @@ public static class HoverTooltip
         var name = potion.Title.GetFormattedText();
         var nameLabel = new Label();
         nameLabel.Text = name ?? "?";
-        nameLabel.AddThemeColorOverride("font_color", new Color(0.91f, 0.86f, 0.75f));
+        nameLabel.AddThemeColorOverride("font_color", Colors.TextPrimary);
         nameLabel.AddThemeFontSizeOverride("font_size", 15);
         vbox.AddChild(nameLabel);
 
