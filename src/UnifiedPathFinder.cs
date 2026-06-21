@@ -4,108 +4,249 @@ using System.Linq;
 
 namespace PredictEverything;
 
-/// <summary>
-/// Unified pathfinding engine for the CrystalSphere planning system.
-/// Given a set of required targets (each at a specific offset with a known RNG cost)
-/// and a pool of optional stepping stones, computes the optimal click sequence
-/// that minimizes gold expenditure (capped at 7).
-///
-/// Algorithm: Sorts targets by offset ascending, then walks forward from
-/// startOffset. Between each pair of consecutive targets, the gap is filled
-/// by greedily selecting the largest stepping stone that fits (preferring
-/// cards over relics/potions), then using gold clicks for the remainder.
-/// If total gold exceeds maxGold (7), the path is infeasible.
-/// </summary>
-public static class UnifiedPathFinder
+// Legacy tuple-based overload (kept for backward compat during migration)
+public static partial class UnifiedPathFinder
 {
     /// <summary>
-    /// Compute the optimal click order for a set of targets at specific offsets.
+    /// Legacy interface — delegates to grid-aware FindPath with auto-converted cost model.
     /// </summary>
-    /// <param name="targets">
-    /// Required targets, each at a specific offset with known RNG cost.
-    /// Must be pre-resolved — each target represents "reveal column T at offset O".
-    /// </param>
-    /// <param name="stonePool">
-    /// Available stepping stones. Each entry is (type, cost) and can be used
-    /// at most once. Stones can be revealed at any offset; the algorithm places
-    /// them in gaps between targets to reduce gold expenditure.
-    /// </param>
-    /// <param name="startOffset">Current CardPredictionOffset.</param>
-    /// <param name="maxGold">Maximum gold clicks allowed (default 7).</param>
-    /// <returns>
-    /// Tuple of (path, goldUsed). path is null if infeasible.
-    /// Each path entry is (columnType, offsetWhereRevealed).
-    /// </returns>
     public static (List<(ColumnType type, int offset)>? path, int goldUsed) FindPath(
         List<(ColumnType type, int offset, int cost)> targets,
         List<(ColumnType type, int cost)> stonePool,
         int startOffset,
         int maxGold = 7)
     {
-        // Validate: no target should be behind startOffset
+        var gridTargets = targets.Select(t => new GridTarget
+        {
+            Kind = TargetKind.ExactCard,
+            ColumnType = t.type,
+            TargetOffset = t.offset,
+            Benefit = t.cost,
+            Cost = t.cost >= 6 ? 4 : 1, // rough grid cost: cards=4 cells, others=1
+            Label = t.type.ToString(),
+        }).ToList();
+
+        var gridStones = stonePool.Select(s => new GridItem
+        {
+            ColumnType = s.type,
+            GridCost = s.cost >= 6 ? 4 : 1,
+            RngBenefit = s.cost,
+        }).ToList();
+
+        return FindPath(gridTargets, gridStones, startOffset, maxGold);
+    }
+}
+
+/// <summary>
+/// Grid-aware pathfinding engine for the CrystalSphere planning system.
+///
+/// Models each grid item as having a real click cost (grid cells = Size.X * Size.Y)
+/// and an RNG benefit (offset advancement). Uses 0-1 knapsack DP to find the
+/// minimum-cell-cost set of filler stones to bridge gaps between targets.
+/// Falls back to gold clicks (1 cell per offset) when stones are exhausted.
+///
+/// The returned path lists target/stone reveals at their offsets. Gaps between
+/// consecutive entries are filled with gold clicks during display.
+/// </summary>
+public static partial class UnifiedPathFinder
+{
+    /// <summary>
+    /// Compute the optimal click sequence for a set of resolved targets.
+    /// </summary>
+    /// <param name="targets">Pre-resolved targets, each at a specific offset with grid cost/benefit.</param>
+    /// <param name="stonePool">Available non-target grid items usable as fillers.</param>
+    /// <param name="startOffset">Current CardPredictionOffset.</param>
+    /// <param name="maxGoldCells">Maximum gold grid cells available (default 9).</param>
+    /// <returns>Path and gold cells used. path is null if infeasible.</returns>
+    public static (List<(ColumnType type, int offset)>? path, int goldCellsUsed) FindPath(
+        List<GridTarget> targets,
+        List<GridItem> stonePool,
+        int startOffset,
+        int maxGoldCells = 9)
+    {
         foreach (var t in targets)
         {
-            if (t.offset < startOffset)
+            if (t.TargetOffset.HasValue && t.TargetOffset.Value < startOffset)
+            {
+                if (PredictEverythingConfig.Instance.VerboseLogging)
+                    ModLogger.Info($"        Target {t.ColumnType}@{t.TargetOffset} is behind startOffset={startOffset} — INFEASIBLE");
                 return (null, 0);
+            }
         }
 
-        // Sort targets by offset ascending
-        targets = targets.OrderBy(t => t.offset).ThenByDescending(t => t.cost).ToList();
+        var sorted = targets
+            .OrderBy(t => t.TargetOffset ?? int.MaxValue)
+            .ToList();
 
         var path = new List<(ColumnType type, int offset)>();
         int cur = startOffset;
-        int gold = 0;
+        int goldCells = 0;
 
-        // Track which stone pool entries are consumed (by index)
         var consumedStones = new bool[stonePool.Count];
-        // Track which column types are consumed as targets (can't also be stones)
-        var targetTypes = new HashSet<ColumnType>(targets.Select(t => t.type));
+        var targetTypes = new HashSet<ColumnType>(sorted.Select(t => t.ColumnType));
 
-        foreach (var target in targets)
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+            ModLogger.Info($"        FindPath: startOffset={startOffset}, targets=[{string.Join(", ", sorted.Select(t => $"{t.ColumnType}@{t.TargetOffset}"))}]");
+
+        foreach (var target in sorted)
         {
-            int targetOff = target.offset;
+            int targetOff = target.TargetOffset ?? cur;
 
-            // Check if we overshot (stones from a previous gap may have pushed past)
             if (cur > targetOff)
-                return (null, gold);
-
-            // Fill the gap between cur and targetOff with stones, then gold
-            while (cur < targetOff)
             {
-                int gap = targetOff - cur;
-                bool foundStone = false;
-
-                // Greedy: try largest fitting stone first (cards=6, then relics/potions=1)
-                for (int si = 0; si < stonePool.Count; si++)
+                // Potion targets can share offsets — auto-advance to cur
+                bool isPotion = target.Kind == TargetKind.FlexiblePotion || target.Kind == TargetKind.ExactPotion;
+                if (isPotion)
                 {
-                    if (consumedStones[si]) continue;
-                    var stone = stonePool[si];
-                    if (targetTypes.Contains(stone.type)) continue; // stone is itself a target
-                    if (stone.cost <= gap)
-                    {
-                        consumedStones[si] = true;
-                        path.Add((stone.type, cur));
-                        cur += stone.cost;
-                        foundStone = true;
-                        break;
-                    }
+                    if (PredictEverythingConfig.Instance.VerboseLogging)
+                        ModLogger.Info($"        Potion target auto-bump: {targetOff}→{cur}");
+                    targetOff = cur;
                 }
-
-                if (!foundStone)
+                else
                 {
-                    // No stone fits — use a gold click
-                    cur += 1;
-                    gold += 1;
-                    if (gold > maxGold)
-                        return (null, gold);
+                    if (PredictEverythingConfig.Instance.VerboseLogging)
+                        ModLogger.Info($"        cur={cur} > targetOff={targetOff} — INFEASIBLE");
+                    return (null, goldCells);
                 }
             }
 
-            // cur == targetOff: reveal the target
-            path.Add((target.type, targetOff));
-            cur = targetOff + target.cost;
+            if (cur < targetOff)
+            {
+                int gap = targetOff - cur;
+                if (PredictEverythingConfig.Instance.VerboseLogging)
+                    ModLogger.Info($"        Gap {cur}→{targetOff} (Δ={gap}): filling...");
+
+                var (fillers, stoneIndices, fillGoldCells) = FillGap(gap, stonePool, consumedStones,
+                    targetTypes, maxGoldCells - goldCells);
+
+                if (fillers == null)
+                {
+                    if (PredictEverythingConfig.Instance.VerboseLogging)
+                        ModLogger.Info($"        FillGap FAILED (gap={gap}, maxGoldRemaining={maxGoldCells - goldCells})");
+                    return (null, goldCells);
+                }
+
+                goldCells += fillGoldCells;
+
+                if (PredictEverythingConfig.Instance.VerboseLogging)
+                {
+                    var chosenStones = stoneIndices.Select(si => $"{stonePool[si].ColumnType}(c={stonePool[si].GridCost},b={stonePool[si].RngBenefit})");
+                    ModLogger.Info($"        → Stones: [{(stoneIndices.Count > 0 ? string.Join(", ", chosenStones) : "none")}] + Gold×{gap - stoneIndices.Sum(si => stonePool[si].RngBenefit)} = {fillGoldCells} gold cells total");
+                }
+
+                foreach (int si in stoneIndices)
+                    consumedStones[si] = true;
+
+                int fillCur = cur;
+                foreach (var (fType, fBenefit) in fillers)
+                {
+                    if (fType != null)
+                        path.Add((fType.Value, fillCur));
+                    fillCur += fBenefit;
+                }
+                cur = fillCur;
+            }
+
+            // Reveal target
+            path.Add((target.ColumnType, targetOff));
+            if (PredictEverythingConfig.Instance.VerboseLogging)
+                ModLogger.Info($"        → Target {target.ColumnType}@{targetOff} (cost={target.Cost}, benefit={target.Benefit}) revealed, cur→{targetOff + target.Benefit}");
+            cur = targetOff + target.Benefit;
         }
 
-        return (path, gold);
+        return (path, goldCells);
+    }
+
+    /// <summary>
+    /// Fill an RNG gap using the cheapest combination of stones + gold clicks.
+    /// 0-1 knapsack DP: dp[i] = min grid cells to reach offset i via stones.
+    /// Then find i + goldFill(i→gap) with minimum total cell cost.
+    /// </summary>
+    private static (List<(ColumnType? type, int benefit)>? fillers,
+        List<int> stoneIndices, int goldCells) FillGap(
+        int gap, List<GridItem> pool, bool[] consumed,
+        HashSet<ColumnType> targetTypes, int maxGold)
+    {
+        const int inf = int.MaxValue / 2;
+        var dp = new int[gap + 1];
+        var dpGold = new int[gap + 1];
+        var dpTrace = new (int prevOff, int stoneIdx)[gap + 1];
+        for (int i = 0; i <= gap; i++) dp[i] = inf;
+
+        dp[0] = 0;
+        dpGold[0] = 0;
+        dpTrace[0] = (-1, -1);
+
+        // Stones (0-1 knapsack for exact offset)
+        for (int si = 0; si < pool.Count; si++)
+        {
+            if (consumed[si]) continue;
+            var stone = pool[si];
+            if (targetTypes.Contains(stone.ColumnType)) continue;
+            int b = stone.RngBenefit;
+            int c = stone.GridCost;
+            if (b <= 0 || b > gap) continue;
+
+            for (int i = gap - b; i >= 0; i--)
+            {
+                if (dp[i] == inf) continue;
+                int nc = dp[i] + c;
+                if (nc < dp[i + b])
+                {
+                    dp[i + b] = nc;
+                    dpGold[i + b] = dpGold[i];
+                    dpTrace[i + b] = (i, si);
+                }
+            }
+        }
+
+        // Gold fill: for each reachable offset i, fill remaining with gold
+        int bestCost = inf;
+        int bestGold = 0;
+        int bestEnd = -1;
+        for (int i = 0; i <= gap; i++)
+        {
+            if (dp[i] == inf) continue;
+            int remaining = gap - i;
+            if (remaining > maxGold) continue;
+            int totalGold = dpGold[i] + remaining;
+            int totalCost = dp[i] + remaining; // gold costs 1 cell per offset
+            if (totalCost < bestCost)
+            {
+                bestCost = totalCost;
+                bestGold = totalGold;
+                bestEnd = i;
+            }
+        }
+
+        if (bestEnd < 0)
+        {
+            if (PredictEverythingConfig.Instance.VerboseLogging)
+                ModLogger.Info($"          FillGap DP: gap={gap} INFEASIBLE (maxGold={maxGold}, unconsumed stones={consumed.Count(c => !c)})");
+            return (null, new List<int>(), 0);
+        }
+
+        // Backtrack stone indices
+        var indices = new List<int>();
+        int off = bestEnd;
+        while (off > 0 && dpTrace[off].stoneIdx >= 0)
+        {
+            indices.Add(dpTrace[off].stoneIdx);
+            off = dpTrace[off].prevOff;
+        }
+        indices.Reverse();
+
+        // Build filler list: stones first (in DP order), then gold fills
+        var fillers = new List<(ColumnType? type, int benefit)>();
+        foreach (int si in indices)
+            fillers.Add((pool[si].ColumnType, pool[si].RngBenefit));
+
+        // Gold fills (null type = gold, used only for offset tracking in caller)
+        int stoneOffset = indices.Sum(si => pool[si].RngBenefit);
+        int goldRemaining = gap - stoneOffset;
+        for (int i = 0; i < goldRemaining; i++)
+            fillers.Add((null, 1));
+
+        return (fillers, indices, bestGold);
     }
 }

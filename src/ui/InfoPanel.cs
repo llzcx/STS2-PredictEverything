@@ -662,6 +662,14 @@ public partial class InfoPanel : Control
                 {
                     if (_predictor.IsColumnLocked(capturedCol)) return;
                     if (capturedRow < _predictor.CurrentOffset) return;
+                    if (PredictEverythingConfig.Instance.VerboseLogging)
+                    {
+                        string cellDesc = FormatCellDesc(capturedRow, capturedCol, pred);
+                        ModLogger.Info($"╔══ MANUAL ROW CLICK ───────────────────────────────────────");
+                        ModLogger.Info($"║ Mode: Manual Row Select");
+                        ModLogger.Info($"║ Cell: offset={capturedRow} col={capturedCol} → {cellDesc}");
+                        ModLogger.Info($"╚════════════════════════════════════════════════════════════");
+                    }
                     _predictor.TogglePlan(capturedCol, capturedRow);
                     Refresh();
                 }
@@ -724,6 +732,17 @@ public partial class InfoPanel : Control
     }
 
     // =============== Row state helpers ===============
+
+    private static string FormatCellDesc(int row, ColumnType col, OffsetPrediction pred)
+    {
+        return col switch
+        {
+            ColumnType.Relic => $"Relic=[{pred.Relic.Name}]",
+            ColumnType.CommonPotion => $"CP=[{string.Join("|", (CrystalSpherePredictor.Instance?.CommonPotionSequence ?? System.Array.Empty<PotionPrediction>()).Select(p => p.Name))}]",
+            ColumnType.RarePotion => $"RP=[{string.Join("|", (CrystalSpherePredictor.Instance?.RarePotionSequence ?? System.Array.Empty<PotionPrediction>()).Select(p => p.Name))}]",
+            _ => string.Join(" | ", pred.GetCards(col).Select(c => c.Upgraded ? c.Name + "+" : c.Name))
+        };
+    }
 
     private bool IsColumnLockedAt(ColumnType col, int row) => col switch
     {
@@ -828,16 +847,20 @@ public partial class InfoPanel : Control
         ob.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         ob.MouseFilter = MouseFilterEnum.Pass;
         ob.AddItem($"-- {I18n.Tr(labelKey)} --", 0);
+        ob.SetItemMetadata(0, -1);
         var p = CrystalSpherePredictor.Instance;
         var seq = rarity == PotionRarity.Rare ? p?.RarePotionSequence : p?.CommonPotionSequence;
         if (seq != null)
         {
-            var seen = new System.Collections.Generic.HashSet<string>();
-            foreach (var pot in seq)
+            // Show each sequence entry with its global reveal index
+            var idxLabels = new[] { "①", "②", "③" }; // ①, ②, ③
+            for (int i = 0; i < seq.Length; i++)
             {
-                var name = pot?.Name;
-                if (!string.IsNullOrEmpty(name) && name != "?" && seen.Add(name))
-                    ob.AddItem(name, ob.ItemCount);
+                var name = seq[i]?.Name;
+                if (string.IsNullOrEmpty(name) || name == "?") continue;
+                string label = $"{name} {idxLabels[i]}";
+                ob.AddItem(label, ob.ItemCount);
+                ob.SetItemMetadata(ob.ItemCount - 1, i); // store global reveal index
             }
         }
         ob.ItemSelected += _ => OnFilterChanged();
@@ -855,9 +878,6 @@ public partial class InfoPanel : Control
         ParseCardFilter(_uncommonFilter, ColumnType.Uncommon, ref uncT);
         ParseCardFilter(_commonFilter, ColumnType.Common, ref comT);
 
-        if (PredictEverythingConfig.Instance.VerboseLogging)
-            ModLogger.Info($"Filter: R={rareT} U={uncT} C={comT} Rel={relT}");
-
         if (_relicFilter?.Selected > 0)
         {
             string name = _relicFilter.GetItemText(_relicFilter.Selected);
@@ -866,17 +886,61 @@ public partial class InfoPanel : Control
         }
 
         int? commonPotT = null;
+        int? commonPotIdx = null;
+        string? commonPotName = null;
         if (_commonPotionFilter?.Selected > 0)
         {
+            commonPotName = _commonPotionFilter.GetItemText((int)_commonPotionFilter.Selected);
+            var cm = _commonPotionFilter.GetItemMetadata((int)_commonPotionFilter.Selected);
+            commonPotIdx = (int)(long)cm;
             commonPotT = _predictor.CurrentOffset;
         }
         int? rarePotT = null;
+        int? rarePotIdx = null;
+        string? rarePotName = null;
         if (_rarePotionFilter?.Selected > 0)
         {
-            rarePotT = _predictor.CurrentOffset;
+            rarePotName = _rarePotionFilter.GetItemText((int)_rarePotionFilter.Selected);
+            var rm = _rarePotionFilter.GetItemMetadata((int)_rarePotionFilter.Selected);
+            rarePotIdx = (int)(long)rm;
+            rarePotT = commonPotT.HasValue ? commonPotT.Value + 1 : _predictor.CurrentOffset;
         }
 
-        var (feasible, sequence, error) = _predictor.ComputeOptimalPath(rareT, uncT, comT, relT, commonPotT, rarePotT);
+        // Check for potion index conflict: two potions can't both be the Nth global reveal
+        if (commonPotIdx.HasValue && rarePotIdx.HasValue && commonPotIdx.Value == rarePotIdx.Value)
+        {
+            if (PredictEverythingConfig.Instance.VerboseLogging)
+                ModLogger.Info($"  Potion index conflict: CP[{commonPotIdx}] and RP[{rarePotIdx}] both want global slot {commonPotIdx} — INFEASIBLE");
+            _predictor.Rare.PlannedOffsets.Clear();
+            _predictor.Uncommon.PlannedOffsets.Clear();
+            _predictor.Common.PlannedOffsets.Clear();
+            _predictor.Relic.PlannedOffsets.Clear();
+            _predictor.CommonPotionColumn.PlannedOffsets.Clear();
+            _predictor.RarePotionColumn.PlannedOffsets.Clear();
+            if (_planLabel != null)
+                _planLabel.Text = $"[color=#FF6B35]{I18n.Tr("error_gold_limit")}[/color]"; // TODO: dedicated i18n key
+            Refresh();
+            return;
+        }
+
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+        {
+            var parts = new List<string>();
+            if (rareT.HasValue) parts.Add($"Rare=[{rareT.Value.Item1}{(rareT.Value.Item2 ? "+" : "")}]");
+            if (uncT.HasValue) parts.Add($"Uncommon=[{uncT.Value.Item1}{(uncT.Value.Item2 ? "+" : "")}]");
+            if (comT.HasValue) parts.Add($"Common=[{comT.Value.Item1}{(comT.Value.Item2 ? "+" : "")}]");
+            if (relT != null) parts.Add($"Relic=[{relT}]");
+            if (commonPotName != null) parts.Add($"CommonPotion=[{commonPotName}]@{commonPotIdx}");
+            if (rarePotName != null) parts.Add($"RarePotion=[{rarePotName}]@{rarePotIdx}");
+            ModLogger.Info("");
+            ModLogger.Info($"╔══ DROPDOWN PATH SEARCH ═══════════════════════════════════");
+            ModLogger.Info($"║ Mode: Dropdown Filter");
+            ModLogger.Info($"║ Current CardPredictionOffset: {_predictor.CardPredictionOffset}");
+            ModLogger.Info($"║ Selections: {(parts.Count > 0 ? string.Join(", ", parts) : "(none — all default)")}");
+            ModLogger.Info($"╚════════════════════════════════════════════════════════════");
+        }
+
+        var (feasible, sequence, error) = _predictor.ComputeOptimalPath(rareT, uncT, comT, relT, commonPotT, rarePotT, commonPotIdx, rarePotIdx);
         if (!feasible && error != null)
         {
             _predictor.Rare.PlannedOffsets.Clear();
