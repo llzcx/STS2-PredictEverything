@@ -331,8 +331,8 @@ public partial class HoverPopup : Control
                     bool isBig = (bool)(_isBigField?.GetValue(gold) ?? false);
                     entries.Add(new PreviewEntry
                     {
-                        TypeLabel = isBig ? I18n.Tr("gold_big_label") : I18n.Tr("gold_small_label"),
-                        Content = "",
+                        TypeLabel = isBig ? "大金币" : "小金币",
+                        Content = isBig ? "+30" : "+10",
                         TypeColor = Gold,
                     });
                     phase2Offset += 1; // gold Populate consumes 1 RNG
