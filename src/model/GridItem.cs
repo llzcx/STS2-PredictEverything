@@ -16,12 +16,29 @@ public class GridItem
     public int GridCost;
     public int RngBenefit;
     public bool IsRevealed;
+    public string DisplayLabel = "";
 
     public bool IsGold => Source is CrystalSphereGold;
     public bool IsPotion => Source is CrystalSpherePotion;
     public bool IsCard => Source is CrystalSphereCardReward;
     public bool IsRelic => Source is CrystalSphereRelic;
     public bool IsCurse => Source is CrystalSphereCurse;
+
+    private static string MakeLabel(CrystalSphereItem item, ColumnType colType)
+    {
+        return item switch
+        {
+            CrystalSphereGold g =>
+                ((bool?)(typeof(CrystalSphereGold).GetField("_isBig",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(g)) == true)
+                    ? "大金币" : "小金币",
+            CrystalSpherePotion => colType == ColumnType.RarePotion ? "金药水" : "白药水",
+            CrystalSphereCardReward => "卡牌",
+            CrystalSphereRelic => "遗物",
+            CrystalSphereCurse => "诅咒",
+            _ => ""
+        };
+    }
 
     public static GridItem FromItem(CrystalSphereItem item, ColumnType colType, int benefit, bool revealed)
     {
@@ -32,7 +49,8 @@ public class GridItem
             Position = item.Position,
             GridCost = item.Size.X * item.Size.Y,
             RngBenefit = benefit,
-            IsRevealed = revealed
+            IsRevealed = revealed,
+            DisplayLabel = MakeLabel(item, colType)
         };
     }
 }

@@ -10,7 +10,7 @@ public static partial class UnifiedPathFinder
     /// <summary>
     /// Legacy interface — delegates to grid-aware FindPath with auto-converted cost model.
     /// </summary>
-    public static (List<(ColumnType type, int offset)>? path, int goldUsed) FindPath(
+    public static (List<(ColumnType? type, int offset, string? label, int benefit)>? path, int goldUsed) FindPath(
         List<(ColumnType type, int offset, int cost)> targets,
         List<(ColumnType type, int cost)> stonePool,
         int startOffset,
@@ -58,7 +58,7 @@ public static partial class UnifiedPathFinder
     /// <param name="startOffset">Current CardPredictionOffset.</param>
     /// <param name="maxGoldCells">Maximum gold grid cells available (default 9).</param>
     /// <returns>Path and gold cells used. path is null if infeasible.</returns>
-    public static (List<(ColumnType type, int offset)>? path, int goldCellsUsed) FindPath(
+    public static (List<(ColumnType? type, int offset, string? label, int benefit)>? path, int goldCellsUsed) FindPath(
         List<GridTarget> targets,
         List<GridItem> stonePool,
         int startOffset,
@@ -78,7 +78,7 @@ public static partial class UnifiedPathFinder
             .OrderBy(t => t.TargetOffset ?? int.MaxValue)
             .ToList();
 
-        var path = new List<(ColumnType type, int offset)>();
+        var path = new List<(ColumnType? type, int offset, string? label, int benefit)>();
         int cur = startOffset;
         int goldCells = 0;
 
@@ -129,16 +129,16 @@ public static partial class UnifiedPathFinder
                     consumedStones[si] = true;
 
                 int fillCur = cur;
-                foreach (var (fType, fBenefit) in fillers)
+                foreach (var (fType, fBenefit, fLabel) in fillers)
                 {
-                    if (fType != null)
-                        path.Add((fType.Value, fillCur));
+                    if (fType.HasValue || fLabel != null)
+                        path.Add((fType, fillCur, fLabel, fBenefit));
                     fillCur += fBenefit;
                 }
                 cur = fillCur;
             }
 
-            path.Add((target.ColumnType, targetOff));
+            path.Add((target.ColumnType, targetOff, null, target.Benefit));
             cur = targetOff + target.Benefit;
         }
 
@@ -153,7 +153,7 @@ public static partial class UnifiedPathFinder
     /// 0-1 knapsack DP: dp[i] = min grid cells to reach offset i via stones.
     /// Then find i + goldFill(i→gap) with minimum total cell cost.
     /// </summary>
-    private static (List<(ColumnType? type, int benefit)>? fillers,
+    private static (List<(ColumnType? type, int benefit, string? label)>? fillers,
         List<int> stoneIndices, int goldCells) FillGap(
         int gap, List<GridItem> pool, bool[] consumed,
         HashSet<ColumnType> targetTypes, int maxGold)
@@ -173,7 +173,8 @@ public static partial class UnifiedPathFinder
         {
             if (consumed[si]) continue;
             var stone = pool[si];
-            if (targetTypes.Contains(stone.ColumnType)) continue;
+            // Gold/curse items use sentinel ColumnType — never excluded as targets
+            if (!stone.IsGold && !stone.IsCurse && targetTypes.Contains(stone.ColumnType)) continue;
             int b = stone.RngBenefit;
             int c = stone.GridCost;
             if (b <= 0 || b > gap) continue;
@@ -223,21 +224,21 @@ public static partial class UnifiedPathFinder
         }
         indices.Reverse();
 
-        // Build filler list: stones first (in DP order), then gold fills.
-        // Gold grid items are treated as virtual gold (null type) — they
-        // don't appear as named columns in the path, just advance offset.
-        var fillers = new List<(ColumnType? type, int benefit)>();
+        // Build filler list: all stones carry their DisplayLabel so the path
+        // shows every item the DP actually consumed.
+        var fillers = new List<(ColumnType? type, int benefit, string? label)>();
         foreach (int si in indices)
         {
             var stone = pool[si];
-            fillers.Add((stone.IsGold ? null : stone.ColumnType, stone.RngBenefit));
+            string? label = string.IsNullOrEmpty(stone.DisplayLabel) ? null : stone.DisplayLabel;
+            fillers.Add((null, stone.RngBenefit, label));
         }
 
-        // Gold fills (null type = gold, used only for offset tracking in caller)
+        // Virtual gold fills (no label — hidden, aggregated into gold_step by caller)
         int stoneOffset = indices.Sum(si => pool[si].RngBenefit);
         int goldRemaining = gap - stoneOffset;
         for (int i = 0; i < goldRemaining; i++)
-            fillers.Add((null, 1));
+            fillers.Add((null, 1, null));
 
         return (fillers, indices, bestGold);
     }

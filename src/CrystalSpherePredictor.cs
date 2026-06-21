@@ -417,17 +417,36 @@ public class CrystalSpherePredictor
 
         int cur = CardPredictionOffset;
         int totalGoldDelta = 0;
+        int cpIdx = 0, rpIdx = 0;
         var steps = new List<string>();
-        foreach (var (type, offset) in rawPath)
+        foreach (var (type, offset, itemLabel, benefit) in rawPath)
         {
             int d = offset - cur;
             totalGoldDelta += d;
             if (d > 0) steps.Add(I18n.Tr("gold_step") + d);
-            steps.Add(GetColumnState(type).Label);
-            cur = offset + GetColumnState(type).RngCost;
+            string label;
+            if (itemLabel != null)
+            {
+                label = $"{itemLabel}@{offset}";
+                steps.Add(label);
+                cur = offset + benefit;
+            }
+            else
+            {
+                var col = type!.Value;
+                label = col switch
+                {
+                    ColumnType.CommonPotion => $"白药水@{offset}({CommonPotionSequence?[cpIdx++]?.Name ?? "?"})",
+                    ColumnType.RarePotion => $"金药水@{offset}({RarePotionSequence?[rpIdx++]?.Name ?? "?"})",
+                    _ => GetColumnState(col).Label + $"@{offset}"
+                };
+                steps.Add(label);
+                cur = offset + GetColumnState(col).RngCost;
+            }
         }
         var sequence = string.Join(" → ", steps);
-        ModLogger.Info($"  Plan ({swPlan.Elapsed.TotalMilliseconds:F1}ms): {sequence} (goldCells={goldCells} goldDelta={totalGoldDelta} offset: {CardPredictionOffset}→{cur})");
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+            ModLogger.Info($"  Plan ({swPlan.Elapsed.TotalMilliseconds:F1}ms): {sequence} (goldCells={goldCells} goldDelta={totalGoldDelta} offset: {CardPredictionOffset}→{cur})");
         return (true, sequence, null);
     }
 
@@ -784,30 +803,64 @@ public class CrystalSpherePredictor
         int[]? comOff = ct.HasValue ? FindCardOffsets(CommonCardMap, ct.Value).Where(o => o >= CardPredictionOffset).ToArray() : null;
         int[]? relOff = relT != null && RelicMap.TryGetValue(relT, out var ro) ? ro.Where(o => o >= CardPredictionOffset).ToArray() : null;
 
-        // === Potion prerequisite expansion ===
-        var potionExact = new List<(ColumnType type, int globalIdx, PotionRarity rarity)>();
-        if (commonPotIdx.HasValue) potionExact.Add((ColumnType.CommonPotion, commonPotIdx.Value, PotionRarity.Common));
-        if (rarePotIdx.HasValue) potionExact.Add((ColumnType.RarePotion, rarePotIdx.Value, PotionRarity.Rare));
+        // === Potion prerequisite expansion (global-counter-aware) ===
+        // CP and RP share a single global potion counter. Each flex slot greedily
+        // prefers CP (3 grid cells) over RP (4 cells), respecting board item limits.
+        var potionExact = new Dictionary<int, ColumnType>(); // globalIdx -> column type
+        if (commonPotIdx.HasValue) potionExact[commonPotIdx.Value] = ColumnType.CommonPotion;
+        if (rarePotIdx.HasValue) potionExact[rarePotIdx.Value] = ColumnType.RarePotion;
 
-        int maxPotionIdx = potionExact.Count > 0 ? potionExact.Max(p => p.globalIdx) : -1;
-        int availPotions = TotalPotionCount - RevealedPotionCount;
+        int maxPotionIdx = potionExact.Count > 0 ? potionExact.Keys.Max() : -1;
+        int availCommon = UnrevealedCommonCount;
+        int availRare = UnrevealedRareCount;
 
-        // Build sorted potion target list: fill all indices from RevealedPotionCount to maxIdx
+        // Reserve items for user-specified exact slots first, then assign flex slots
+        int cpExact = potionExact.Values.Count(t => t == ColumnType.CommonPotion);
+        int rpExact = potionExact.Values.Count(t => t == ColumnType.RarePotion);
+        bool overflow = cpExact > availCommon || rpExact > availRare;
+        int cpFlex = overflow ? 0 : availCommon - cpExact;
+        int rpFlex = overflow ? 0 : availRare - rpExact;
+        int cpUsed = 0, rpUsed = 0;
+
         var potionTargets = new List<(ColumnType type, int globalIdx, bool isExact, PotionRarity? rarity)>();
-        var exactSet = new HashSet<int>(potionExact.Select(p => p.globalIdx));
-        for (int idx = RevealedPotionCount; idx <= maxPotionIdx; idx++)
+        if (!overflow)
+            for (int idx = RevealedPotionCount; idx <= maxPotionIdx; idx++)
         {
-            var exact = potionExact.FirstOrDefault(p => p.globalIdx == idx);
-            if (exact.type != default)
-                potionTargets.Add((exact.type, idx, true, exact.rarity));
+            PotionRarity? rarity = null;
+            bool isExact;
+            ColumnType type;
+            if (potionExact.TryGetValue(idx, out var exactType))
+            {
+                isExact = true;
+                if (exactType == ColumnType.CommonPotion)
+                    { type = ColumnType.CommonPotion; rarity = PotionRarity.Common; cpUsed++; }
+                else
+                    { type = ColumnType.RarePotion; rarity = PotionRarity.Rare; rpUsed++; }
+            }
             else
-                potionTargets.Add((ColumnType.CommonPotion, idx, false, null)); // flexible — cheapest available
+            {
+                isExact = false;
+                if (cpFlex > 0)
+                    { type = ColumnType.CommonPotion; cpFlex--; cpUsed++; }
+                else if (rpFlex > 0)
+                    { type = ColumnType.RarePotion; rpFlex--; rpUsed++; }
+                else
+                    { overflow = true; break; }
+            }
+            potionTargets.Add((type, idx, isExact, rarity));
+        }
+        if (overflow)
+        {
+            int totalNeeded = maxPotionIdx - RevealedPotionCount + 1;
+            ModLogger.Info($"  Potion overflow: need {totalNeeded} reveals (avail CP×{availCommon} RP×{availRare}) — insufficient ({sw.Elapsed.TotalMilliseconds:F1}ms)");
+            return (false, "", string.Format(I18n.Tr("error_potion_overflow"), totalNeeded, availCommon + availRare));
         }
 
-        if (potionTargets.Count > availPotions)
+        if (PredictEverythingConfig.Instance.VerboseLogging && potionTargets.Count > 0)
         {
-            ModLogger.Info($"  Potion overflow: need {potionTargets.Count} reveals but only {availPotions} potion items left ({sw.Elapsed.TotalMilliseconds:F1}ms)");
-            return (false, "", string.Format(I18n.Tr("error_potion_overflow"), potionTargets.Count, availPotions));
+            var ptDesc = string.Join(", ", potionTargets.Select(p =>
+                $"{(p.isExact ? "EXACT" : "flex")} {p.type}@{p.globalIdx}{(p.rarity.HasValue ? $"({p.rarity})" : "")}"));
+            ModLogger.Info($"  Potion allocation: [{ptDesc}] (avail CP×{availCommon} RP×{availRare}, used CP×{cpUsed} RP×{rpUsed})");
         }
 
         // Build potion GridTargets (no fixed offset — auto-place at cur)
@@ -863,28 +916,48 @@ public class CrystalSpherePredictor
         }
 
         var targetedTypes = new HashSet<ColumnType>(targetGroups.Select(g => g.t));
-        foreach (var pt in potionTargets.Where(p => p.isExact))
+        foreach (var pt in potionTargets)
             targetedTypes.Add(pt.type);
-        foreach (var (type, offset) in best)
+        foreach (var (type, offset, _, _) in best)
         {
-            if (targetedTypes.Contains(type))
-                GetColumnState(type).PlannedOffsets.Add(offset);
+            if (type.HasValue && targetedTypes.Contains(type.Value))
+                GetColumnState(type.Value).PlannedOffsets.Add(offset);
         }
         PlanChanged?.Invoke();
 
         var steps = new List<string>();
         int pos = CardPredictionOffset;
         int totalG = 0;
-        foreach (var (type, offset) in best)
+        int cpIdx = 0, rpIdx = 0;
+        foreach (var (type, offset, itemLabel, benefit) in best)
         {
             int d = offset - pos;
             totalG += d;
             if (d > 0) steps.Add(I18n.Tr("gold_step") + d);
-            steps.Add(GetColumnState(type).Label);
-            pos = offset + GetColumnState(type).RngCost;
+            string label;
+            if (itemLabel != null)
+            {
+                label = $"{itemLabel}@{offset}";
+                steps.Add(label);
+                pos = offset + benefit;
+            }
+            else
+            {
+                var col = type!.Value;
+                label = col switch
+                {
+                    ColumnType.CommonPotion => $"白药水@{offset}({CommonPotionSequence?[cpIdx++]?.Name ?? "?"})",
+                    ColumnType.RarePotion => $"金药水@{offset}({RarePotionSequence?[rpIdx++]?.Name ?? "?"})",
+                    _ => GetColumnState(col).Label + $"@{offset}"
+                };
+                steps.Add(label);
+                pos = offset + GetColumnState(col).RngCost;
+            }
         }
-        ModLogger.Info($"  OptPath result ({sw.Elapsed.TotalMilliseconds:F1}ms): [{string.Join(" -> ", steps)}] gold={totalG} end={pos}");
-        return (true, string.Join(" -> ", steps), null);
+        var sequenceStr = string.Join(" -> ", steps);
+        if (PredictEverythingConfig.Instance.VerboseLogging)
+            ModLogger.Info($"  OptPath result ({sw.Elapsed.TotalMilliseconds:F1}ms): [{sequenceStr}] gold={totalG} end={pos}");
+        return (true, sequenceStr, null);
     }
 
     // =============== Grid inventory ===============
@@ -1057,7 +1130,9 @@ public class CrystalSpherePredictor
                 default: continue;
             }
 
-            if (excludeColumns?.Contains(colType) == true) continue;
+            // Gold/curse use sentinel ColumnType — never excluded from stone pool
+            if (item is not CrystalSphereGold && item is not CrystalSphereCurse
+                && excludeColumns?.Contains(colType) == true) continue;
 
             pool.Add(GridItem.FromItem(item, colType, benefit, false));
         }
@@ -1117,7 +1192,7 @@ public class CrystalSpherePredictor
     /// Try all combinations of (one offset per target group) and return the best path.
     /// Best = fewest gold used, then earliest end offset.
     /// </summary>
-    private List<(ColumnType, int)>? FindBestPath(
+    private List<(ColumnType?, int, string?, int)>? FindBestPath(
         List<(ColumnType t, int[] offs, int cost)> targetGroups,
         List<(ColumnType type, int cost)> stonePool)
     {
@@ -1127,7 +1202,7 @@ public class CrystalSpherePredictor
         // Sort combos by total distance from CardPredictionOffset (closest first)
         combos = combos.OrderBy(c => c.Sum(o => Math.Abs(o - CardPredictionOffset))).ToList();
 
-        List<(ColumnType, int)>? best = null;
+        List<(ColumnType?, int, string?, int)>? best = null;
         int bestGold = int.MaxValue;
         int bestEnd = int.MaxValue;
 
@@ -1140,7 +1215,7 @@ public class CrystalSpherePredictor
             var (path, gold) = UnifiedPathFinder.FindPath(targets, stonePool, CardPredictionOffset, 7);
             if (path == null || gold > 7) continue;
 
-            int endOffset = path[^1].offset + GetColumnState(path[^1].type).RngCost;
+            int endOffset = path[^1].offset + (path[^1].type is { } t ? GetColumnState(t).RngCost : path[^1].benefit);
             if (gold < bestGold || (gold == bestGold && endOffset < bestEnd))
             {
                 bestGold = gold;
@@ -1157,7 +1232,7 @@ public class CrystalSpherePredictor
     /// Grid-aware version: prepends sorted potion targets before card/relic combos.
     /// Potion targets auto-place at cur (TargetOffset=null), no Cartesian product needed.
     /// </summary>
-    private List<(ColumnType, int)>? FindBestPathGrid(
+    private List<(ColumnType?, int, string?, int)>? FindBestPathGrid(
         List<(ColumnType t, int[] offs, int benefit)> targetGroups,
         List<GridTarget> potionTargets,
         List<GridItem> gridStones)
@@ -1172,7 +1247,7 @@ public class CrystalSpherePredictor
         if (PredictEverythingConfig.Instance.VerboseLogging)
             ModLogger.Info($"  Step 3 — Cartesian product: {combos.Count} combos");
 
-        List<(ColumnType, int)>? best = null;
+        List<(ColumnType?, int, string?, int)>? best = null;
         int bestGoldCells = int.MaxValue;
         int attempts = 0;
 
