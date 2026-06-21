@@ -176,7 +176,7 @@ public partial class LockedDashboard : Control
         // Inventory header row
         var invHeader = new HBoxContainer();
         invHeader.AddThemeConstantOverride("separation", 6);
-        var nameHeaderLabel = CreateLabel("", 11, StarWhite);
+        var nameHeaderLabel = CreateLabel(I18n.Tr("inventory_col_item"), 10, new Color(0.5f, 0.5f, 0.5f));
         nameHeaderLabel.CustomMinimumSize = new Vector2(80, 0);
         invHeader.AddChild(nameHeaderLabel);
         var hRemain = CreateLabel("剩余", 10, new Color(0.5f, 0.5f, 0.5f));
