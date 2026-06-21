@@ -1305,7 +1305,7 @@ public class CrystalSpherePredictor
 
         // Pre-compute gap reachability: which gap values can be exactly filled
         // by the stone pool. One subset-sum DP, then per-combo O(1) check.
-        int maxComboOff = combos.Count > 0 ? combos.Max(c => c.Max()) : 0;
+        int maxComboOff = combos.Count > 0 ? combos.Max(c => c.Length > 0 ? c.Max() : 0) : 0;
         int maxGap = Math.Max(maxComboOff - CardPredictionOffset, 0);
         var canFill = new bool[maxGap + 1];
         canFill[0] = true;
